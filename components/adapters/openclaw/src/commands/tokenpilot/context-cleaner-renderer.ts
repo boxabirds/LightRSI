@@ -131,6 +131,7 @@ export function renderOpenClawCleanPlan(plan: ContextCleanPlan): string {
     "Choose task IDs explicitly after reviewing this plan.",
     "",
     "No changes applied.",
-    `Apply selected tasks: /lightrsi clean --plan ${plan.planId} --select <task-id[,task-id...]>`,
+    `Schedule selected tasks: /lightrsi clean --plan ${plan.planId} --select <task-id[,task-id...]>`,
+    "Scheduled cleaning runs on your next ordinary OpenClaw request.",
   ].join("\n");
 }

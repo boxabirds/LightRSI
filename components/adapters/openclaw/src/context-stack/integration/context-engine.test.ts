@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCanonicalState } from "@lightrsi/history";
 
 import { createPluginContextEngine } from "./context-engine.js";
+import { openClawCleanerSchedulePath, scheduleOpenClawClean } from "../../context-cleaner/scheduler.js";
 
 function createDeps(transcriptEntries: any[] | null) {
   const traceStages: string[] = [];
@@ -33,6 +34,26 @@ function createDeps(transcriptEntries: any[] | null) {
     },
   };
 }
+
+test("corrupt Cleaner schedule preserves the incoming Host messages and canonical state", async (t) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "openclaw-engine-corrupt-cleaner-"));
+  t.after(() => rm(stateDir, { recursive: true, force: true }));
+  const { deps } = createDeps(null);
+  const engine = createPluginContextEngine({
+    stateDir, moduleEnablement: { eviction: false }, eviction: { replacementMode: "drop" },
+  }, { warn() {} }, deps);
+  const sessionId = "corrupt-schedule-session";
+  await engine.assemble({ sessionId, messages: [{ role: "user", content: "existing" }] });
+  const before = await loadCanonicalState(stateDir, sessionId);
+  await scheduleOpenClawClean(stateDir, {
+    sessionId, cleanPlanId: "plan", baseRevision: "revision", selectedTaskIds: ["task"],
+    scheduledAt: new Date().toISOString(),
+  });
+  await writeFile(openClawCleanerSchedulePath(stateDir, sessionId), "{broken");
+  const messages = [{ role: "user", content: "existing" }, { role: "user", content: "new user input" }];
+  assert.deepEqual((await engine.assemble({ sessionId, messages })).messages, messages);
+  assert.deepEqual(await loadCanonicalState(stateDir, sessionId), before);
+});
 
 test("context engine persists runtime messages when the transcript path is unavailable", async () => {
   const stateDir = await mkdtemp(join(tmpdir(), "tokenpilot-context-engine-runtime-fallback-"));

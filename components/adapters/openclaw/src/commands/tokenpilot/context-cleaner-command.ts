@@ -1,17 +1,12 @@
 import {
-  CONTEXT_CLEAN_SCHEMA_VERSION,
-  analyzeContextCleanSession,
   createApiContextCleanRecommendationProvider,
-  createContextCleanerControlPlane,
-  readContextCleanPlan,
   type ContextCleanPlan,
   type ContextCleanReceipt,
   type ContextCleanRecommendationProvider,
-  type ContextCleanerHostBridge,
 } from "@lightrsi/cleaner";
 import type { JsonModelClient } from "@lightrsi/runtime-core";
 
-import { createOpenClawContextCleanerBridge } from "../../context-cleaner/index.js";
+import { createOpenClawCleanerControlService } from "../../context-cleaner/index.js";
 import { ensureOpenClawCleanerTaskRegistry } from "../../context-cleaner/task-registry-bootstrap.js";
 import { normalizeConfig } from "../../context-stack/integration/config-normalize.js";
 import type { NormalizedPluginRuntimeConfig } from "../../context-stack/integration/config-types.js";
@@ -63,6 +58,7 @@ export function formatOpenClawCleanUsage(): string {
     "  /lightrsi clean --status <plan-id>",
     "  /lightrsi clean --cancel <plan-id>",
     "The first command only analyzes. Cleaning requires an explicit task selection.",
+    "Selection schedules cleaning for the next ordinary OpenClaw request.",
   ].join("\n");
 }
 
@@ -82,7 +78,8 @@ function parseCleanArgs(rawArgs: string): ParsedCleanArgs {
         parsed.planId = value;
       } else {
         if (parsed.selectedTaskIds) throw new Error("clean_selection_duplicate_argument");
-        parsed.selectedTaskIds = value.split(",").map((taskId) => taskId.trim()).filter(Boolean);
+        parsed.selectedTaskIds = value.split(",").map((taskId) => taskId.trim());
+        if (parsed.selectedTaskIds.some((id) => !id)) throw new Error("clean_selection_malformed");
       }
       continue;
     }
@@ -119,30 +116,31 @@ function count(tokens: number | null, chars: number): string {
 }
 
 function renderReceipt(receipt: ContextCleanReceipt): string {
+  const receiptCount = (tokens: number | null, chars: number): string => count(
+    receipt.tokenCountMode === "chars_only" ? null : tokens,
+    chars,
+  );
   const lines = [
     `Context clean ${receipt.status}: ${receipt.planId}`,
     `Selected tasks: ${receipt.selectedTaskIds.length > 0 ? receipt.selectedTaskIds.join(", ") : "(none)"}`,
-    `Estimated savings: ${count(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`,
+    `Estimated savings: ${receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`,
   ];
   if (receipt.status === "applied") {
-    lines.push(`Applied savings: ${count(receipt.appliedSavedTokens, receipt.appliedSavedChars)}`);
+    lines.push(`Applied savings: ${receiptCount(receipt.appliedSavedTokens, receipt.appliedSavedChars)}`);
     lines.push(`Fallback count: ${receipt.fallbackUsed ? 1 : 0}`);
-    lines.push("Apply timing: immediate.");
+    lines.push("Apply timing: next Host request (completed).");
   } else if (receipt.status === "scheduled") {
-    lines.push(`Scheduled savings: ${count(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`);
+    lines.push(`Scheduled savings: ${receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`);
     lines.push("Applied savings: not applied");
     lines.push(`Fallback count: ${receipt.fallbackUsed ? 1 : 0}`);
     lines.push("Apply timing: next Host request.");
+    lines.push("Send your next ordinary OpenClaw message, then query --status.");
   } else {
     lines.push(`Fallback count: ${receipt.fallbackUsed ? 1 : 0}`);
   }
   if (receipt.deferredTaskIds.length > 0) lines.push(`Deferred tasks: ${receipt.deferredTaskIds.join(", ")}`);
   if (receipt.reasons.length > 0) lines.push(`Reasons: ${receipt.reasons.join(", ")}`);
   return lines.join("\n");
-}
-
-function storeFailure(operation: string, reasons: string[]): never {
-  throw new Error(`${operation}:${reasons.join(",") || "unknown"}`);
 }
 
 export function createOpenClawCleanRecommendationProvider(
@@ -171,60 +169,15 @@ export function createOpenClawCleanBackend(
   const normalized = normalizeConfig(pluginConfigRecord(currentConfig));
   const stateDir = normalized.stateDir.trim();
   if (!stateDir) throw new Error("clean_state_dir_missing");
-  const controlPlane = createContextCleanerControlPlane({ stateDir });
-  const bridge: ContextCleanerHostBridge = createOpenClawContextCleanerBridge({
+  const service = createOpenClawCleanerControlService({
     stateDir,
-    controlPlane,
-    config: { replacementMode: normalized.eviction.replacementMode },
+    replacementMode: normalized.eviction.replacementMode ?? "pointer_stub",
+    recommendationProvider: createOpenClawCleanRecommendationProvider(normalized, modelClient),
+    beforeAnalyze: (sessionId) => ensureOpenClawCleanerTaskRegistry({
+      currentConfig, normalized, sessionId, logger, modelClient,
+    }).then(() => undefined),
   });
-  const provider = createOpenClawCleanRecommendationProvider(normalized, modelClient);
-
-  async function readPlan(planId: string): Promise<ContextCleanPlan | undefined> {
-    const result = await readContextCleanPlan({ stateDir, planId });
-    if (result.bypassed) storeFailure("clean_plan_unavailable", result.reasons);
-    return result.value?.plan;
-  }
-
-  return {
-    stateDir,
-    async analyze(sessionId) {
-      await ensureOpenClawCleanerTaskRegistry({
-        currentConfig,
-        normalized,
-        sessionId,
-        logger,
-        modelClient,
-      });
-      return (await analyzeContextCleanSession({ stateDir, bridge, sessionId, provider })).plan;
-    },
-    readPlan,
-    async approve(planId, selectedTaskIds) {
-      if (selectedTaskIds.length === 0) throw new Error("clean_selection_empty");
-      if (new Set(selectedTaskIds).size !== selectedTaskIds.length) {
-        throw new Error("clean_selection_duplicate_task");
-      }
-      const plan = await readPlan(planId);
-      if (!plan) throw new Error(`clean_plan_missing:${planId}`);
-      const tasksById = new Map(plan.tasks.map((task) => [task.taskId, task]));
-      const selectedTasks = selectedTaskIds.map((taskId) => {
-        const task = tasksById.get(taskId);
-        if (!task) throw new Error(`clean_selection_unknown_task:${taskId}`);
-        if (!task.selectable) throw new Error(`clean_selection_task_protected:${taskId}`);
-        return { taskId, itemIds: [...task.itemIds], itemDigests: { ...task.itemDigests } };
-      });
-      return bridge.executeApprovedClean({
-        schemaVersion: CONTEXT_CLEAN_SCHEMA_VERSION,
-        cleanPlanId: plan.planId,
-        hostId: plan.hostId,
-        sessionId: plan.sessionId,
-        baseRevision: plan.baseRevision,
-        approvedAt: new Date().toISOString(),
-        selectedTasks,
-      });
-    },
-    readReceipt: (planId) => bridge.readCleanReceipt(planId),
-    cancel: (planId) => bridge.cancelCleanPlan(planId),
-  };
+  return { stateDir, ...service };
 }
 
 function directSessionId(ctx: any): string | undefined {

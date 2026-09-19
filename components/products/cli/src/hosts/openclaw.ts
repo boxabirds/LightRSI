@@ -17,7 +17,8 @@ import {
 } from "../../../../adapters/openclaw/src/commands/tokenpilot/host-config-adapter.js";
 import { formatOpenClawDoctorReport, inspectOpenClawDoctor } from "../../../../adapters/openclaw/src/commands/tokenpilot/openclaw-doctor.js";
 import { normalizeConfig } from "../../../../adapters/openclaw/src/context-stack/integration/config-normalize.js";
-import { createOpenClawContextCleanerBridge } from "../../../../adapters/openclaw/src/context-cleaner/index.js";
+import { createOpenClawCleanerControlService } from "../../../../adapters/openclaw/src/context-cleaner/index.js";
+import { createApiContextCleanRecommendationProvider } from "@lightrsi/cleaner";
 import { buildSessionReportResult, resolveConfiguredPreferredSessionId } from "./shared.js";
 import {
   ensureDetachedVisualDaemon,
@@ -27,7 +28,7 @@ import {
   singleHostVisualPidPath,
 } from "./visual-daemon.js";
 import type { CleanCommandBackend } from "../clean.js";
-import { createHostCleanCommandBackend } from "./cleaner.js";
+import { createCleanCommandBackendFromControlService } from "./cleaner.js";
 
 function normalizeSessionId(value: unknown): string | undefined {
   const text = typeof value === "string" ? value.trim() : "";
@@ -49,23 +50,16 @@ export async function createOpenClawCleanCommandBackend(): Promise<CleanCommandB
   const stateDir = resolveStateDir(config);
   if (!stateDir) return undefined;
   const normalized = normalizeConfig(pluginConfigRecord(config));
-  return createHostCleanCommandBackend({
+  return createCleanCommandBackendFromControlService(createOpenClawCleanerControlService({
     stateDir,
-    recommendationEnabled: normalized.taskStateEstimator.enabled,
-    recommendationConfig: {
+    replacementMode: normalized.eviction.replacementMode ?? "pointer_stub",
+    recommendationProvider: normalized.taskStateEstimator.enabled ? createApiContextCleanRecommendationProvider({
       baseUrl: normalized.taskStateEstimator.baseUrl,
       apiKey: normalized.taskStateEstimator.apiKey,
       model: normalized.taskStateEstimator.model,
       requestTimeoutMs: normalized.taskStateEstimator.requestTimeoutMs,
-    },
-    createBridge(controlPlane) {
-      return createOpenClawContextCleanerBridge({
-        stateDir,
-        controlPlane,
-        config: { replacementMode: normalized.eviction.replacementMode },
-      });
-    },
-  });
+    }) : undefined,
+  }));
 }
 
 async function writeConfig(nextConfig: Record<string, unknown>): Promise<void> {

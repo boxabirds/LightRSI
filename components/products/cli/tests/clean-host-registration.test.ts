@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,8 @@ import { resolveCleanCommandBackend } from "../src/clean.js";
 import { dispatchCli } from "../src/dispatch.js";
 import { createHostCleanCommandBackend } from "../src/hosts/cleaner.js";
 import { registerBuiltInCliHostProducts } from "../src/hosts/factory.js";
+import { createOpenClawCleanBackend } from "../../../adapters/openclaw/src/commands/tokenpilot/context-cleaner-command.js";
+import { applyScheduledOpenClawClean } from "../../../adapters/openclaw/src/context-cleaner/index.js";
 
 function plan(): ContextCleanPlan {
   return {
@@ -156,7 +158,7 @@ test("real Codex clean dispatch reaches the registered backend", async () => {
   }
 });
 
-test("real OpenClaw clean dispatch applies a canonical plan immediately", async () => {
+test("real OpenClaw clean dispatch schedules a canonical plan without applying it", async () => {
   const root = await mkdtemp(join(tmpdir(), "lightrsi-cli-openclaw-clean-dispatch-"));
   const originalConfigPath = process.env.OPENCLAW_CONFIG_PATH;
   const originalHome = process.env.HOME;
@@ -235,7 +237,11 @@ test("real OpenClaw clean dispatch applies a canonical plan immediately", async 
     registerBuiltInCliHostProducts();
     const backend = await resolveCleanCommandBackend({ hostId: "openclaw" });
     assert.ok(backend);
-    const analyzed = await backend.analyze(sessionId);
+    const native = createOpenClawCleanBackend(JSON.parse(await readFile(configPath, "utf8")));
+    const analyzed = await native.analyze(sessionId);
+    assert.equal((await backend.readPlan(analyzed.planId))?.planId, analyzed.planId);
+    const canonicalPath = join(canonicalDir, `${sessionId}.json`);
+    const original = await readFile(canonicalPath, "utf8");
     const result = await dispatchCli([
       "openclaw",
       "clean",
@@ -244,8 +250,15 @@ test("real OpenClaw clean dispatch applies a canonical plan immediately", async 
       "--select",
       "task-completed",
     ]);
-    assert.match(result.text, /Context clean applied/);
-    assert.match(result.text, /Applied savings:/);
+    assert.match(result.text, /Context clean scheduled/);
+    assert.match(result.text, /Applied savings: not applied/);
+    assert.equal(await readFile(canonicalPath, "utf8"), original);
+    assert.equal((await native.readReceipt(analyzed.planId))?.status, "scheduled");
+    await applyScheduledOpenClawClean({ stateDir, sessionId, replacementMode: "drop" });
+    assert.equal((await native.readReceipt(analyzed.planId))?.status, "applied");
+    const status = await dispatchCli(["openclaw", "clean", "--status", analyzed.planId]);
+    assert.match(status.text, /Context clean applied/);
+    assert.equal(JSON.parse(await readFile(canonicalPath, "utf8")).messages.length, 1);
   } finally {
     if (originalConfigPath === undefined) delete process.env.OPENCLAW_CONFIG_PATH;
     else process.env.OPENCLAW_CONFIG_PATH = originalConfigPath;
