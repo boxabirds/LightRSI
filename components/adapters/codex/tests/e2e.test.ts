@@ -57,7 +57,8 @@ import {
   createCodexCleanerMcpTool,
 } from "../src/context-cleaner/index.js";
 
-test("Codex host e2e wires install, proxy reduction, report/visual, and MCP recovery together", async (t) => {
+test("Codex host e2e wires install, proxy reduction, report/visual, and MCP recovery together", async () => {
+  let installedDaemonPid: number | undefined;
   await withTempHome("lightrsi-codex-e2e-", async (homeDir) => {
     const proxyPort = await reserveUnusedPort();
     const stateDir = join(homeDir, ".codex", "tokenpilot-state", "tokenpilot");
@@ -80,11 +81,7 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
         ],
       },
     });
-    t.after(async () => {
-      if (installedConfig) await stopDaemon(installedConfig);
-      await upstream.close();
-    });
-
+    try {
     await mkdir(join(homeDir, ".codex"), { recursive: true });
     await writeTokenPilotCodexConfig(
       normalizeTokenPilotCodexConfig({
@@ -124,6 +121,7 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
       tokenPilotConfigPath,
     });
     assert.equal(result.daemon.running, true);
+    installedDaemonPid = result.daemon.pid;
     installedConfig = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
 
     const requestPayload = {
@@ -272,8 +270,13 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
     assert.equal(typeof cacheAuditLines[0]?.requestPromptCacheKey, "string");
     assert.equal(Array.isArray(cacheAuditLines[0]?.entropyFindings), true);
     assert.equal(Array.isArray(cacheAuditLines[0]?.driftReasons), true);
-
+    } finally {
+      if (installedConfig) await stopDaemon(installedConfig);
+      await upstream.close();
+    }
   });
+  assert.ok(installedDaemonPid);
+  assert.throws(() => process.kill(installedDaemonPid, 0), { code: "ESRCH" });
 });
 
 type CleanerMcpMessage = {
