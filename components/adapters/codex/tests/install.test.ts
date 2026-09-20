@@ -807,7 +807,7 @@ test("installCodexTokenPilot preserves Codex TUI animation settings", async () =
     const hooksConfigPath = join(dir, "hooks.json");
     const tokenPilotConfigPath = join(dir, "tokenpilot.json");
     await writeFile(codexConfigPath, [
-      "model_provider = \"OPENAI\"",
+      "model_provider = \"openai\"",
       "",
       "[tui]",
       "animations = true",
