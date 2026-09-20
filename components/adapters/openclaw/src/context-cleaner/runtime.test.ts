@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   CONTEXT_CLEAN_SCHEMA_VERSION,
+  createContextCleanerControlPlane,
   type ContextCleanPlan,
   type ContextCleanReceipt,
   type ExecuteApprovedContextCleanParams,
@@ -26,7 +27,7 @@ import { applyScheduledOpenClawClean } from "./runtime.js";
 import { createOpenClawCleanerSnapshotSource } from "./snapshot.js";
 import { createOpenClawCleanerRewriteRequest } from "./snapshot.js";
 import { createPluginContextEngine } from "../context-stack/integration/context-engine.js";
-import { readOpenClawCleanerSchedule } from "./scheduler.js";
+import { readOpenClawCleanerSchedule, scheduleOpenClawClean } from "./scheduler.js";
 
 const SESSION_ID = "openclaw-clean-session";
 const NOW = "2026-08-31T00:01:00.000Z";
@@ -308,6 +309,32 @@ test("schedules without changing context, then applies once at the next request"
   assert.deepEqual(replayed, receipt);
   assert.equal((await runScheduled(stateDir)).reserved, false);
   assert.deepEqual(await loadCanonicalState(stateDir, SESSION_ID), state);
+});
+
+test("recovers a host schedule written before shared finalization", async (context) => {
+  const stateDir = await mkdtemp(join(tmpdir(), "openclaw-cleaner-finalize-recovery-"));
+  context.after(() => rm(stateDir, { recursive: true, force: true }));
+  await seed(stateDir);
+  const { bridge, plan } = await analyzed(stateDir);
+  const request = approval(plan);
+  const controlPlane = createContextCleanerControlPlane({ stateDir, now: () => NOW });
+  const approved = await controlPlane.approveCleanSelection(request);
+  assert.equal(approved.status, "approved");
+  assert.equal((await scheduleOpenClawClean(stateDir, {
+    sessionId: request.sessionId,
+    cleanPlanId: request.cleanPlanId,
+    baseRevision: request.baseRevision,
+    selectedTaskIds: request.selectedTasks.map((task) => task.taskId),
+    scheduledAt: approved.updatedAt,
+  })).outcome, "stored");
+  assert.equal((await bridge.readCleanReceipt(plan.planId))?.status, "approved");
+
+  assert.equal((await runScheduled(stateDir)).receipt?.status, "applied");
+  assert.equal((await bridge.readCleanReceipt(plan.planId))?.status, "applied");
+  assert.equal((await readOpenClawCleanerSchedule(stateDir, SESSION_ID))?.status, "terminal");
+  const appliedState = await loadCanonicalState(stateDir, SESSION_ID);
+  assert.equal((await runScheduled(stateDir)).reserved, false);
+  assert.deepEqual(await loadCanonicalState(stateDir, SESSION_ID), appliedState);
 });
 
 test("marks a plan stale when canonical state changes after analysis", async (context) => {

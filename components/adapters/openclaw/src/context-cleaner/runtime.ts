@@ -3,6 +3,7 @@ import { mkdir, readFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   CONTEXT_CLEAN_SCHEMA_VERSION,
+  createContextCleanerControlPlane,
   createContextCleanerHostExecutionBridge,
   readContextCleanReceipt,
   type ContextCleanReceipt,
@@ -249,9 +250,25 @@ export async function applyScheduledOpenClawCleanUnlocked(params: {
 
   const current = await readContextCleanReceipt({ stateDir: params.stateDir, planId: request.cleanPlanId });
   if (current.bypassed || !current.value) throw new Error("openclaw_clean_receipt_unavailable");
-  const scheduled = validateReceipt({ receipt: current.value, planId: request.cleanPlanId,
+  let scheduled = validateReceipt({ receipt: current.value, planId: request.cleanPlanId,
     sessionId: request.sessionId, selectedTaskIds: request.selectedTaskIds });
-  if (scheduled.status === "approved" || scheduled.status === "analyzed") return { reserved: true };
+  if (scheduled.status === "approved") {
+    scheduled = validateReceipt({
+      receipt: await createContextCleanerControlPlane({ stateDir: params.stateDir, now })
+        .finalizeCleanSchedule({
+          cleanPlanId: request.cleanPlanId,
+          hostId: OPENCLAW_HOST_ID,
+          sessionId: request.sessionId,
+          baseRevision: request.baseRevision,
+          selectedTaskIds: [...request.selectedTaskIds],
+          scheduledAt: request.scheduledAt,
+        }),
+      planId: request.cleanPlanId,
+      sessionId: request.sessionId,
+      selectedTaskIds: request.selectedTaskIds,
+    });
+  }
+  if (scheduled.status === "analyzed") return { reserved: true };
   async function finish(receipt: ContextCleanReceipt) {
     const result = await finishOpenClawCleanSchedule(params.stateDir, request!, receipt.updatedAt);
     if (result.outcome !== "transitioned" && result.outcome !== "unchanged")
