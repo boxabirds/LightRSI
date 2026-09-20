@@ -46,6 +46,7 @@ import {
   normalizeTokenPilotCodexConfig,
   writeTokenPilotCodexConfig,
 } from "../src/config.js";
+import { stopDaemon } from "../src/daemon.js";
 import { installCodexTokenPilot } from "../src/install.js";
 import { processCodexHookEvent } from "../src/hooks-handler.js";
 import { createConsoleLogger } from "../src/logger.js";
@@ -64,7 +65,7 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
     const hooksConfigPath = defaultHooksConfigPath();
     const tokenPilotConfigPath = defaultTokenPilotConfigPath();
     const longToolPayload = createLongToolPayload();
-    let runtime: Awaited<ReturnType<typeof startCodexResponsesProxy>> | undefined;
+    let installedConfig: Awaited<ReturnType<typeof loadTokenPilotCodexConfig>> | undefined;
 
     const upstream = await startMockJsonUpstream({
       responseBody: {
@@ -80,7 +81,7 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
       },
     });
     t.after(async () => {
-      await runtime?.close();
+      if (installedConfig) await stopDaemon(installedConfig);
       await upstream.close();
     });
 
@@ -117,78 +118,46 @@ test("Codex host e2e wires install, proxy reduction, report/visual, and MCP reco
       tokenPilotConfigPath,
     );
 
-    await mkdir(join(homeDir, ".codex"), { recursive: true });
-    await mkdir(join(homeDir, ".codex"), { recursive: true });
-    await installCodexTokenPilot({
+    const result = await installCodexTokenPilot({
       codexConfigPath,
       hooksConfigPath,
       tokenPilotConfigPath,
     });
+    assert.equal(result.daemon.running, true);
+    installedConfig = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
 
-    const codexToml = [
-      "model_provider = \"tokenpilot\"",
-      "",
-      "[model_providers.tokenpilot]",
-      "name = \"TokenPilot\"",
-      `base_url = ${JSON.stringify(`http://127.0.0.1:${proxyPort}/v1`)}`,
-      "wire_api = \"responses\"",
-      "requires_openai_auth = true",
-      "",
-      "[model_providers.OpenAI]",
-      "name = \"OpenAI\"",
-      `base_url = ${JSON.stringify(upstream.baseUrl)}`,
-      "wire_api = \"responses\"",
-      "requires_openai_auth = true",
-      "",
-      "[mcp_servers.tokenpilot_memory_fault_recover]",
-      `command = ${JSON.stringify(process.execPath)}`,
-      `args = [${JSON.stringify("/tmp/server.js")}]`,
-      "",
-      "[mcp_servers.tokenpilot_memory_fault_recover.env]",
-      `TOKENPILOT_STATE_DIR = ${JSON.stringify(stateDir)}`,
-      "",
-    ].join("\n");
-    await mkdir(join(homeDir, ".codex"), { recursive: true });
-    await writeFile(codexConfigPath, codexToml, "utf8");
-
-    const config = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
-    runtime = await startCodexResponsesProxy({
-      config,
-      logger: createConsoleLogger(false),
-      codexConfigPath,
-    });
-
-    const response = await fetch(`${runtime.baseUrl}/responses`, {
+    const requestPayload = {
+      model: "tokenpilot/gpt-5.4-mini",
+      stream: false,
+      instructions: "Your working directory is: /repo/demo\nRuntime: agent=agent-123 |\nBe precise.",
+      tools: [
+        { type: "function", function: { name: "z_tool", parameters: { z: 1, a: 2 } } },
+        { type: "function", function: { name: "a_tool", parameters: { b: true, a: false } } },
+      ],
+      input: [
+        {
+          role: "developer",
+          content: "Your working directory is: /repo/demo\nRuntime: agent=agent-123 |\nBe precise.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "summarize this tool output" },
+          ],
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: longToolPayload,
+        },
+      ],
+    };
+    const response = await fetch(`${result.baseUrl}/responses`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: "tokenpilot/gpt-5.4-mini",
-        stream: false,
-        instructions: "Your working directory is: /repo/demo\nRuntime: agent=agent-123 |\nBe precise.",
-        tools: [
-          { type: "function", function: { name: "z_tool", parameters: { z: 1, a: 2 } } },
-          { type: "function", function: { name: "a_tool", parameters: { b: true, a: false } } },
-        ],
-        input: [
-          {
-            role: "developer",
-            content: "Your working directory is: /repo/demo\nRuntime: agent=agent-123 |\nBe precise.",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: "summarize this tool output" },
-            ],
-          },
-          {
-            type: "function_call_output",
-            call_id: "call_1",
-            output: longToolPayload,
-          },
-        ],
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
     assert.equal(response.status, 200);

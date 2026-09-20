@@ -417,10 +417,6 @@ function normalizeLocalProxyBaseUrl(value: string | undefined): string | undefin
   return `http://127.0.0.1:${match[1]}/v1`;
 }
 
-function isLoopbackProxyProvider(provider: CodexProviderConfig | undefined): boolean {
-  return Boolean(normalizeLocalProxyBaseUrl(provider?.baseUrl));
-}
-
 function sameProviderEndpoint(left: CodexProviderConfig | undefined, right: CodexProviderConfig | undefined): boolean {
   return Boolean(left?.baseUrl && right?.baseUrl && left.baseUrl === right.baseUrl);
 }
@@ -682,18 +678,31 @@ export async function installCodexTokenPilot(
       || (legacyBuiltInProvider && tokenPilotConfig.providerName === LEGACY_OPENAI_PROXY_PROVIDER))
     && existingInterceptedProxyBaseUrl === previousProxyBaseUrl
     && Boolean(tokenPilotConfig.upstream?.baseUrl);
+  const persistedUpstreamProxyBaseUrl = normalizeLocalProxyBaseUrl(tokenPilotConfig.upstream?.baseUrl);
+  const persistedUpstreamIsKnownProxy = persistedUpstreamProxyBaseUrl === previousProxyBaseUrl
+    || (Boolean(existingInterceptedProxyBaseUrl)
+      && persistedUpstreamProxyBaseUrl === existingInterceptedProxyBaseUrl);
   const persistedUpstreamMatchesInterceptedProvider = Boolean(existingInterceptedProxyBaseUrl)
     && (tokenPilotConfig.providerName === providerName
       || (legacyBuiltInProvider && tokenPilotConfig.providerName === LEGACY_OPENAI_PROXY_PROVIDER))
     && Boolean(tokenPilotConfig.upstream?.baseUrl)
-    && !isLoopbackProxyProvider(tokenPilotConfig.upstream);
+    && !persistedUpstreamIsKnownProxy;
+  const persistedUpstreamMatchesSelectedProvider = tokenPilotConfig.upstreamProvider === selectedProviderName
+    && Boolean(tokenPilotConfig.upstream?.baseUrl)
+    && !persistedUpstreamIsKnownProxy;
   const installedProviderLooksFresh = existingInterceptedProxyBaseUrl === previousProxyBaseUrl;
   const upstreamProvider = providerAlreadyRouted
       || persistedUpstreamMatchesInterceptedProvider
       || installedProviderLooksFresh
     ? tokenPilotConfig.upstream
-    : builtInCodexProviderConfig(selectedProviderName) ?? interceptedProvider;
-  if (!upstreamProvider?.baseUrl || isLoopbackProxyProvider(upstreamProvider)) {
+    : builtInCodexProviderConfig(selectedProviderName)
+      ?? interceptedProvider
+      ?? (persistedUpstreamMatchesSelectedProvider ? tokenPilotConfig.upstream : undefined);
+  const selectedUpstreamProxyBaseUrl = normalizeLocalProxyBaseUrl(upstreamProvider?.baseUrl);
+  const selectedUpstreamIsKnownProxy = selectedUpstreamProxyBaseUrl === previousProxyBaseUrl
+    || (Boolean(existingInterceptedProxyBaseUrl)
+      && selectedUpstreamProxyBaseUrl === existingInterceptedProxyBaseUrl);
+  if (!upstreamProvider?.baseUrl || selectedUpstreamIsKnownProxy) {
     throw new Error(`Cannot install TokenPilot for ${providerName}: no direct upstream provider is available`);
   }
   tokenPilotConfig.enabled = true;
@@ -701,7 +710,7 @@ export async function installCodexTokenPilot(
   tokenPilotConfig.upstreamProvider = selectedProviderName;
   if (
     upstreamProvider?.baseUrl
-    && !isLoopbackProxyProvider(upstreamProvider)
+    && !selectedUpstreamIsKnownProxy
     && !sameProviderEndpoint(upstreamProvider, tokenPilotConfig.upstream)
   ) {
     tokenPilotConfig.upstream = upstreamProvider;

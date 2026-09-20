@@ -79,12 +79,13 @@ The installer will:
 
 - keep the current active `model_provider`
 - preserve existing `[tui]` settings, including Codex animations
-- repoint that active provider's `base_url` to the local TokenPilot proxy
 - persist the original upstream provider config into `~/.codex/tokenpilot.json`
 - register `tokenpilot_memory_fault_recover` and `lightrsi_cleaner` MCP servers in Codex config
 - write a conservative `startup_timeout_sec` for both MCP servers
 - write TokenPilot runtime config
-- start the local TokenPilot proxy immediately
+- start the local TokenPilot proxy and wait for `/health` to pass
+- repoint the active provider's `base_url` only after the proxy is healthy
+- preserve direct upstream routing if daemon startup or the final config commit fails
 - register TokenPilot hooks for `SessionStart`, `PreToolUse`, and `PostToolUse`
 - install constrained Codex command skills under the local Codex skills directory
 - run a post-install MCP startup probe and report degraded mode if recovery MCP is still unavailable
@@ -168,7 +169,7 @@ Then use the first real-session path:
 
 1. Start Codex normally.
 2. If Codex asks you to review or trust the TokenPilot hooks, approve them.
-3. Open a new Codex session so `SessionStart` can start the local proxy.
+3. `SessionStart` will check and restart the proxy if needed; initial startup already completed during installation.
 4. In another terminal, verify through the shared CLI:
 
 ```bash
@@ -268,7 +269,7 @@ The default `contextRewrite.providerCompatibilityProbe` value is `real_provider`
 
 If install finishes in degraded MCP mode, Codex stable-prefix and reduction remain usable; only the real `memory_fault_recover` tool path is unavailable until MCP startup succeeds.
 
-If doctor still reports `proxy healthy: no` after hooks are trusted and a new session has started, use the daemon fallback:
+If a later session reports `proxy healthy: no`, inspect `tokenpilot-codex.log` first, then use the daemon fallback:
 
 ```bash
 tokenpilot-codex status
@@ -349,6 +350,11 @@ Useful files:
 - `ux-effects/sessions/<session>.json`
 
 ## Debugging
+
+If a session loses the local proxy after a successful install, inspect
+`~/.codex/tokenpilot-state/tokenpilot/tokenpilot-codex.log` first. The install
+itself returns only after `/health` succeeds, while `SessionStart` remains an
+idempotent restart path for later sessions.
 
 Useful checks:
 
