@@ -29,6 +29,7 @@ export type CleanPlanView = {
 export type CleanReceiptView = {
   planId: string;
   status: string;
+  tokenCountMode?: string;
   selectedTaskIds: string[];
   estimatedSavedTokens: number | null;
   estimatedSavedChars: number;
@@ -162,7 +163,9 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
     task.taskId,
     task.description,
     count(task.tokenCount, task.charCount),
-    task.tokenPercent === null ? "-" : `${task.tokenPercent.toFixed(1)}%`,
+    task.tokenPercent === null
+      ? (plan.usedChars > 0 ? `${(task.charCount / plan.usedChars * 100).toFixed(1)}%` : "-")
+      : `${task.tokenPercent.toFixed(1)}%`,
     task.recommendation,
     risk(task),
   ]);
@@ -211,17 +214,21 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
 }
 
 export function renderCleanReceipt(receipt: CleanReceiptView): string {
+  const receiptCount = (tokens: number | null, chars: number): string => count(
+    receipt.tokenCountMode === "chars_only" ? null : tokens,
+    chars,
+  );
   const lines = [
     `Context clean ${receipt.status}: ${receipt.planId}`,
     `Selected tasks: ${receipt.selectedTaskIds.length > 0 ? receipt.selectedTaskIds.join(", ") : "(none)"}`,
-    `Estimated savings: ${count(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`,
+    `Estimated savings: ${receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`,
     `Scheduled savings: ${receipt.status === "scheduled" || receipt.status === "applied"
-      ? count(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)
+      ? receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)
       : "not scheduled"}`,
   ];
   if (receipt.status === "applied") {
     if (receipt.appliedSavedTokens !== undefined || receipt.appliedSavedChars !== undefined) {
-      lines.push(`Applied savings: ${count(receipt.appliedSavedTokens ?? null, receipt.appliedSavedChars ?? 0)}`);
+      lines.push(`Applied savings: ${receiptCount(receipt.appliedSavedTokens ?? null, receipt.appliedSavedChars ?? 0)}`);
     } else {
       lines.push("Applied savings: unavailable (missing Host evidence)");
     }

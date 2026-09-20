@@ -10,22 +10,88 @@ import {
   appendCanonicalTranscript,
   estimateMessagesChars,
   saveCanonicalState,
+  loadCanonicalState,
 } from "@lightrsi/history";
 import { appendModuleObservation } from "@lightrsi/product-surface";
 import { enqueueEvictedTasksForProceduralMemory } from "./procedural-memory.js";
 import { runHistoryEvictionIfEnabled } from "./history-eviction-runner.js";
 import { runHistoryModules } from "./module-orchestrator.js";
 import { TOKENPILOT_HISTORY_MODULE_IDS } from "@lightrsi/tokenpilot";
+import { applyScheduledOpenClawCleanUnlocked, hasOpenClawCleanerApplyIntent } from "../../context-cleaner/runtime.js";
+import { readOpenClawCleanerSchedule } from "../../context-cleaner/scheduler.js";
+import { withOpenClawCleanerSessionLock } from "../../context-cleaner/session-lock.js";
 
 export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
+  const cleanerRequests = new Set<string>();
   const canonicalMessageTaskIdsBound = (message: Record<string, unknown>): string[] =>
     deps.canonicalMessageTaskIds(message, deps.asRecord);
+
+  async function preserveCanonical(sessionId: string, runtimeMessages: any[]) {
+    const state = await loadCanonicalState(cfg.stateDir, sessionId);
+    return {
+      state: {
+        ...(state ?? {
+          version: 1 as const, sessionId, messages: runtimeMessages,
+          seenMessageIds: [], updatedAt: new Date().toISOString(),
+        }),
+        messages: runtimeMessages.length > 0 ? runtimeMessages : state?.messages ?? [],
+      },
+      changed: false,
+    };
+  }
 
   async function syncAndEvict(
     sessionId: string,
     runtimeMessages: any[] = [],
     runtimeMessageIdPrefix = "runtime",
+    executeCleaner = false,
   ) {
+    return withOpenClawCleanerSessionLock({
+      stateDir: cfg.stateDir,
+      sessionId,
+      action: async () => {
+        let cleanerReserved = cleanerRequests.has(sessionId);
+        if (executeCleaner) {
+          cleanerRequests.delete(sessionId);
+          cleanerReserved = false;
+        }
+        try {
+          const pending = await readOpenClawCleanerSchedule(cfg.stateDir, sessionId);
+          cleanerReserved ||= pending?.status === "scheduled";
+          if (!executeCleaner && pending?.status === "scheduled"
+            && await hasOpenClawCleanerApplyIntent(cfg.stateDir, pending.cleanPlanId)) {
+            return preserveCanonical(sessionId, runtimeMessages);
+          }
+          if (executeCleaner && pending?.status === "scheduled") {
+            const result = await applyScheduledOpenClawCleanUnlocked({
+              stateDir: cfg.stateDir, sessionId,
+              replacementMode: cfg.eviction?.replacementMode === "drop" ? "drop" : "pointer_stub",
+            });
+            cleanerReserved ||= result.reserved;
+          }
+        } catch {
+          // Preserve the Host request and reserve its history from automatic eviction.
+          cleanerReserved = true;
+          logger.warn?.("[context-cleaner] scheduled clean unavailable; preserving context");
+          cleanerRequests.add(sessionId);
+          // Keep the exact revision needed for intent recovery on the next request.
+          return preserveCanonical(sessionId, runtimeMessages);
+        }
+        if (cleanerReserved) cleanerRequests.add(sessionId);
+        return syncAndEvictLocked(sessionId, runtimeMessages, runtimeMessageIdPrefix, cleanerReserved);
+      },
+    }).catch((error) => {
+      if ((error as Error).message !== "openclaw_clean_session_busy") throw error;
+      return preserveCanonical(sessionId, runtimeMessages);
+    });
+  }
+
+  async function syncAndEvictLocked(
+    sessionId: string, runtimeMessages: any[], runtimeMessageIdPrefix: string, cleanerReserved: boolean,
+  ) {
+    const evictionConfig = cleanerReserved
+      ? { ...cfg, moduleEnablement: { ...cfg.moduleEnablement, eviction: false } }
+      : cfg;
     const context: {
       synced?: Awaited<ReturnType<typeof syncCanonicalStateFromTranscript>>;
       eviction?: Awaited<ReturnType<typeof runHistoryEvictionIfEnabled>>;
@@ -95,10 +161,10 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
         },
         {
           id: TOKENPILOT_HISTORY_MODULE_IDS.eviction,
-          enabled: () => cfg.moduleEnablement.eviction,
+          enabled: () => evictionConfig.moduleEnablement.eviction,
           run: async () => {
             context.eviction = await runHistoryEvictionIfEnabled({
-              cfg,
+              cfg: evictionConfig,
               sessionId,
               state: context.synced!.state,
               helpers: {
@@ -144,7 +210,7 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
     });
     const synced = context.synced!;
     const eviction = context.eviction ?? await runHistoryEvictionIfEnabled({
-      cfg,
+      cfg: evictionConfig,
       sessionId,
       state: synced.state,
       helpers: {
@@ -245,7 +311,7 @@ export function createPluginContextEngine(cfg: any, logger: any, deps: any) {
       return { status: committed ? "committed" as const : "duplicate" as const };
     },
     async assemble(params: { sessionId: string; messages: any[]; tokenBudget?: number }) {
-      const result = await syncAndEvict(params.sessionId, params.messages);
+      const result = await syncAndEvict(params.sessionId, params.messages, "runtime", true);
       const estimatedChars = estimateMessagesChars(result.state.messages, deps.contentToText);
       return {
         messages: result.state.messages,

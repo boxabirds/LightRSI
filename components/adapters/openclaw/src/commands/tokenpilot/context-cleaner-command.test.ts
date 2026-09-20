@@ -129,7 +129,7 @@ test("native clean analyzes the current OpenClaw session without applying change
   assert.match(result.text, /Task details:/);
   assert.match(result.text, /Recommended selection estimate: 100 tok/);
   assert.match(result.text, /1\. task-done - Completed task/);
-  assert.match(result.text, /Apply selected tasks: \/lightrsi clean --plan ctxclean-demo --select/);
+  assert.match(result.text, /Schedule selected tasks: \/lightrsi clean --plan ctxclean-demo --select/);
   assert.match(result.text, /No changes applied/);
 });
 
@@ -153,7 +153,7 @@ test("native clean forwards only the explicit plan task selection", async () => 
   assert.match(result.text, /Context clean applied/);
   assert.match(result.text, /Applied savings: 100 tok/);
   assert.match(result.text, /Fallback count: 0/);
-  assert.match(result.text, /Apply timing: immediate\./);
+  assert.match(result.text, /Apply timing: next Host request \(completed\)\./);
 });
 
 test("native clean reads status and cancels through the canonical backend", async () => {
@@ -189,7 +189,7 @@ test("native clean reads status and cancels through the canonical backend", asyn
   assert.equal(cancelledPlanId, "ctxclean-demo");
   assert.match(status.text, /Context clean applied/);
   assert.match(status.text, /Applied savings: 100 tok/);
-  assert.match(status.text, /Apply timing: immediate\./);
+  assert.match(status.text, /Apply timing: next Host request \(completed\)\./);
   assert.match(cancelled.text, /Context clean cancelled/);
   assert.match(cancelled.text, /Fallback count: 1/);
 });
@@ -214,6 +214,30 @@ test("native clean distinguishes scheduled savings from applied savings", async 
   assert.match(result.text, /Applied savings: not applied/);
   assert.match(result.text, /Fallback count: 0/);
   assert.match(result.text, /Apply timing: next Host request\./);
+});
+
+test("native clean preserves chars-only units for zero-value receipts", async () => {
+  const receipt: ContextCleanReceipt = {
+    ...appliedReceipt,
+    status: "cancelled",
+    selectedTaskIds: [],
+    estimatedSavedTokens: 0,
+    estimatedSavedChars: 0,
+    appliedSavedTokens: undefined,
+    appliedSavedChars: undefined,
+    tokenCountMode: "chars_only",
+    evidence: undefined,
+    fallbackUsed: true,
+    reasons: ["cancelled_by_user"],
+  };
+  const result = await handleOpenClawContextCleanCommand({
+    ctx: {},
+    rawArgs: "--status ctxclean-demo",
+    backend: backend({ async readReceipt() { return receipt; } }),
+  });
+
+  assert.match(result.text, /Estimated savings: 0 chars/);
+  assert.doesNotMatch(result.text, /Estimated savings: 0 tok/);
 });
 
 test("native command registration preserves aliases and exposes clean help", async () => {
@@ -311,4 +335,6 @@ test("native clean handler returns actionable usage for invalid arguments", asyn
   const result = await handler({}, "--select task-done");
   assert.match(result.text, /Context clean error: clean_plan_missing/);
   assert.match(result.text, /\/lightrsi clean --status/);
+  const malformed = await handler({}, "--plan plan --select task-done,,task-other");
+  assert.match(malformed.text, /clean_selection_malformed/);
 });

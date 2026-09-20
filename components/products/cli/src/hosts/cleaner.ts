@@ -48,6 +48,7 @@ function receiptView(receipt: ContextCleanReceipt): CleanReceiptView {
   return {
     planId: receipt.planId,
     status: receipt.status,
+    tokenCountMode: receipt.tokenCountMode,
     selectedTaskIds: [...receipt.selectedTaskIds],
     estimatedSavedTokens: receipt.estimatedSavedTokens,
     estimatedSavedChars: receipt.estimatedSavedChars,

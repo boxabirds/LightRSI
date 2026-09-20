@@ -72,7 +72,7 @@ import { __testHooks, contextSafeRecovery, proxyRuntimeHelpers } from "./plugin-
 import { createWorkspaceHintStore } from "./plugin-workspace-hints.js";
 import { createOpenClawStatePathResolver } from "./context-stack/integration/host-adapter.js";
 import { initializeOpenClawTokenPilotPreset } from "./preset.js";
-import { createOpenClawContextCleanerBridge } from "./context-cleaner/index.js";
+import { createOpenClawCleanerCapabilities, createOpenClawCleanerControlService } from "./context-cleaner/index.js";
 
 module.exports = {
   id: "tokenpilot",
@@ -82,7 +82,8 @@ module.exports = {
   // Keep the entry-level kind as a compatibility fallback for older hosts.
   kind: "context-engine",
   __testHooks,
-  createOpenClawContextCleanerBridge,
+  createOpenClawCleanerCapabilities,
+  createOpenClawCleanerControlService,
 
   register(api: any) {
     initializeOpenClawTokenPilotPreset();
