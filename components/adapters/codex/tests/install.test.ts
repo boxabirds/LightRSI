@@ -21,7 +21,12 @@ import {
   normalizeTokenPilotCodexConfig,
   writeTokenPilotCodexConfig,
 } from "../src/config.js";
-import { daemonPaths, readDaemonStatus } from "../src/daemon.js";
+import {
+  daemonPaths,
+  readDaemonStatus,
+  startDaemon as startDaemonBase,
+  stopDaemon as stopDaemonBase,
+} from "../src/daemon.js";
 import { inspectCodexDoctor } from "../src/doctor.js";
 import {
   type CodexInstallDependencies,
@@ -233,6 +238,110 @@ test("failed reinstall replaces an old loopback route with the persisted upstrea
     const text = await readFile(fixture.codexConfigPath, "utf8");
     assert.match(text, /base_url = "https:\/\/provider\.example\/v1"/);
     assert.doesNotMatch(text, /127\.0\.0\.1/);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("install starts a healthy daemon before committing loopback routing", async () => {
+  const fixture = await createInstallFixture({ provider: "OPENAI" });
+  let configObservedDuringStart = "";
+  try {
+    const result = await installCodexTokenPilot(fixture.params, {
+      startDaemon: async (config) => {
+        configObservedDuringStart = await readFile(fixture.codexConfigPath, "utf8");
+        return {
+          running: true,
+          started: true,
+          pid: 4242,
+          ...daemonPaths(config),
+        };
+      },
+      stopDaemon: async (config) => ({
+        running: false,
+        stopped: false,
+        ...daemonPaths(config),
+      }),
+    });
+    assert.match(configObservedDuringStart, /https:\/\/api\.openai\.com\/v1/);
+    assert.doesNotMatch(configObservedDuringStart, /127\.0\.0\.1/);
+    assert.equal(result.daemon.running, true);
+    assert.match(await readFile(fixture.codexConfigPath, "utf8"), /127\.0\.0\.1/);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("install removes daemon state and preserves direct routing when the child exits before health", async () => {
+  const fixture = await createInstallFixture({ provider: "OPENAI" });
+  const exitScriptPath = join(fixture.root, "exit-before-health.cjs");
+  await writeFile(exitScriptPath, "process.exit(42);\n", "utf8");
+  let startAttempted = false;
+  let cleanupStopCalls = 0;
+  try {
+    await assert.rejects(
+      installCodexTokenPilot(fixture.params, {
+        startDaemon: async (config, options) => {
+          startAttempted = true;
+          return startDaemonBase(config, {
+            ...options,
+            cliPath: exitScriptPath,
+          });
+        },
+        stopDaemon: async (config) => {
+          if (startAttempted) cleanupStopCalls += 1;
+          return stopDaemonBase(config);
+        },
+      }),
+      /did not become healthy/,
+    );
+    const text = await readFile(fixture.codexConfigPath, "utf8");
+    assert.match(text, /base_url = "https:\/\/api\.openai\.com\/v1"/);
+    assert.doesNotMatch(text, /127\.0\.0\.1/);
+    assert.equal(cleanupStopCalls, 1);
+    const config = await loadTokenPilotCodexConfig(fixture.tokenPilotConfigPath);
+    await assert.rejects(readFile(daemonPaths(config).pidPath, "utf8"), { code: "ENOENT" });
+  } finally {
+    const config = await loadTokenPilotCodexConfig(fixture.tokenPilotConfigPath);
+    await stopDaemonBase(config).catch(() => undefined);
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("install stops the new daemon and restores direct routing when config commit fails", async () => {
+  const fixture = await createInstallFixture({ provider: "OPENAI" });
+  let startAttempted = false;
+  let cleanupStopCalls = 0;
+  try {
+    await assert.rejects(
+      installCodexTokenPilot(fixture.params, {
+        startDaemon: async (config) => {
+          startAttempted = true;
+          return {
+            running: true,
+            started: true,
+            pid: 4242,
+            ...daemonPaths(config),
+          };
+        },
+        stopDaemon: async (config) => {
+          if (startAttempted) cleanupStopCalls += 1;
+          return {
+            running: false,
+            stopped: startAttempted,
+            ...daemonPaths(config),
+          };
+        },
+        writeCodexConfig: async () => {
+          throw new Error("fixture_codex_config_commit_failed");
+        },
+      }),
+      /fixture_codex_config_commit_failed/,
+    );
+    const text = await readFile(fixture.codexConfigPath, "utf8");
+    assert.match(text, /base_url = "https:\/\/api\.openai\.com\/v1"/);
+    assert.doesNotMatch(text, /127\.0\.0\.1/);
+    assert.equal(cleanupStopCalls, 1);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -937,10 +1046,11 @@ test("installCodexTokenPilot waits for a released preferred port when the wall c
   }
 });
 
-test("installCodexTokenPilot stops an existing daemon before resolving the proxy port", async () => {
+test("installCodexTokenPilot replaces an existing daemon and leaves the proxy healthy", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lightrsi-codex-install-stop-daemon-"));
   const daemonPort = await reserveUnusedPort();
   let dummy: ReturnType<typeof spawn> | undefined;
+  let installedConfig: Awaited<ReturnType<typeof loadTokenPilotCodexConfig>> | undefined;
   try {
     const codexConfigPath = join(dir, "config.toml");
     const hooksConfigPath = join(dir, "hooks.json");
@@ -991,13 +1101,23 @@ test("installCodexTokenPilot stops an existing daemon before resolving the proxy
       hooksConfigPath,
       tokenPilotConfigPath,
       probeMcp: false,
+    }, {
+      startDaemon: startDaemonBase,
+      stopDaemon: stopDaemonBase,
     });
 
-    const persisted = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
-    assert.equal(persisted.proxyPort, daemonPort);
+    installedConfig = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
+    assert.equal(installedConfig.proxyPort, daemonPort);
     assert.equal(result.baseUrl, `http://127.0.0.1:${daemonPort}/v1`);
-    assert.equal((await readDaemonStatus(persisted)).running, false);
+    const daemon = await readDaemonStatus(installedConfig);
+    assert.equal(daemon.running, true);
+    assert.equal(result.daemon.running, true);
+    await stopDaemonBase(installedConfig);
+    installedConfig = undefined;
   } finally {
+    if (installedConfig) {
+      await stopDaemonBase(installedConfig).catch(() => undefined);
+    }
     if (dummy?.pid) {
       try {
         process.kill(dummy.pid, "SIGKILL");
