@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { createServer } from "node:net";
@@ -23,7 +23,11 @@ import {
   readCodexRootStringAssignment,
   writeTokenPilotCodexConfig,
 } from "./config.js";
-import { stopDaemon } from "./daemon.js";
+import {
+  startDaemon,
+  stopDaemon,
+  type DaemonStatus,
+} from "./daemon.js";
 import {
   defaultCodexSkillBridgeDir,
   installCommandSkillBridge,
@@ -54,6 +58,87 @@ const CODEX_CLEANER_FORWARDED_ENV_VARS = [
   "all_proxy",
   "NODE_USE_ENV_PROXY",
 ];
+
+export type CodexInstallParams = {
+  codexConfigPath?: string;
+  tokenPilotConfigPath?: string;
+  hooksConfigPath?: string;
+  providerName?: string;
+  installHooks?: boolean;
+  probeMcp?: boolean;
+  platform?: NodeJS.Platform;
+  cliBinDir?: string;
+  cliContextPath?: string;
+};
+
+export type CodexInstallResult = {
+  codexConfigPath: string;
+  tokenPilotConfigPath: string;
+  hooksConfigPath: string;
+  providerName: string;
+  activeProviderName: string;
+  baseUrl: string;
+  hooksInstalled: boolean;
+  mcpServerName: string;
+  cleanerMcpServerName: string;
+  expectedHookCommand: string;
+  expectedMcpCommand: string;
+  expectedMcpArgs: string[];
+  expectedCleanerMcpCommand: string;
+  expectedCleanerMcpArgs: string[];
+  expectedMcpStartupTimeoutSec: number;
+  commandSkillsDir: string;
+  commandSkillNames: string[];
+  cliBinInstalled: boolean;
+  cliBinPath: string;
+  cliLauncherPath?: string;
+  cliBinDir: string;
+  cliBinDirOnPath: boolean;
+  hostCliBinPath?: string;
+  hostCliLauncherPath?: string;
+  cleanCliBinPath?: string;
+  cleanCliLauncherPath?: string;
+  daemon: DaemonStatus & { started: boolean };
+  mcpProbe: {
+    ok: boolean;
+    detail: string;
+    timedOut: boolean;
+    degraded: boolean;
+  };
+  cleanerMcpProbe: {
+    ok: boolean;
+    detail: string;
+    timedOut: boolean;
+    degraded: boolean;
+  };
+};
+
+export type CodexInstallDependencies = {
+  startDaemon: typeof startDaemon;
+  stopDaemon: typeof stopDaemon;
+  writeCodexConfig: typeof writeTextFileAtomic;
+};
+
+async function writeTextFileAtomic(path: string, text: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await writeFile(temporaryPath, text, "utf8");
+    await rename(temporaryPath, path);
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+}
+
+function ensureTrailingNewline(text: string): string {
+  return text.endsWith("\n") ? text : `${text}\n`;
+}
+
+const DEFAULT_CODEX_INSTALL_DEPENDENCIES: CodexInstallDependencies = {
+  startDaemon,
+  stopDaemon,
+  writeCodexConfig: writeTextFileAtomic,
+};
 
 function builtInCodexProviderConfig(providerName: string): CodexProviderConfig | undefined {
   if (providerName !== "openai") return undefined;
@@ -198,6 +283,83 @@ function upsertMcpServerSection(text: string, params: {
     return text.replace(sectionFamilyRe, `\n${section}\n`);
   }
   return `${text.replace(/\s*$/, "")}\n\n${section}\n`;
+}
+
+function buildProxiedCodexConfig(params: {
+  existing: string;
+  providerName: string;
+  builtInOpenAI: boolean;
+  baseUrl: string;
+  interceptedProvider?: CodexProviderConfig;
+  mcpServer: TokenPilotMcpServerSpec;
+  cleanerMcpServer: TokenPilotMcpServerSpec;
+}): string {
+  let next = replaceOrInsertRootAssignment(
+    params.existing,
+    "model_provider",
+    quoteToml(params.providerName),
+  );
+  next = params.builtInOpenAI
+    ? replaceOrInsertRootAssignment(
+      removeProviderSectionFamily(
+        removeProviderSectionFamily(next, "openai"),
+        LEGACY_OPENAI_PROXY_PROVIDER,
+      ),
+      "openai_base_url",
+      quoteToml(params.baseUrl),
+    )
+    : rewriteProviderSectionForProxy(next, {
+      providerName: params.providerName,
+      baseUrl: params.baseUrl,
+      displayName: params.interceptedProvider?.name ?? params.providerName,
+      wireApi: params.interceptedProvider?.wireApi ?? "responses",
+      requiresOpenAIAuth: params.interceptedProvider?.requiresOpenAIAuth ?? true,
+    });
+  next = upsertMcpServerSection(next, {
+    serverName: params.mcpServer.serverName,
+    command: params.mcpServer.command,
+    args: params.mcpServer.args,
+    env: params.mcpServer.env,
+    envVars: params.mcpServer.envVars,
+    startupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  });
+  return upsertMcpServerSection(next, {
+    serverName: params.cleanerMcpServer.serverName,
+    command: params.cleanerMcpServer.command,
+    args: params.cleanerMcpServer.args,
+    env: params.cleanerMcpServer.env,
+    envVars: params.cleanerMcpServer.envVars,
+    startupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
+  });
+}
+
+function buildDirectCodexProviderConfig(params: {
+  existing: string;
+  providerName: string;
+  builtInOpenAI: boolean;
+  upstream: CodexProviderConfig;
+}): string {
+  let next = replaceOrInsertRootAssignment(
+    params.existing,
+    "model_provider",
+    quoteToml(params.providerName),
+  );
+  if (params.builtInOpenAI) {
+    next = removeProviderSectionFamily(next, "openai");
+    next = removeProviderSectionFamily(next, LEGACY_OPENAI_PROXY_PROVIDER);
+    return replaceOrInsertRootAssignment(
+      next,
+      "openai_base_url",
+      quoteToml(params.upstream.baseUrl),
+    );
+  }
+  return rewriteProviderSectionForProxy(next, {
+    providerName: params.providerName,
+    baseUrl: params.upstream.baseUrl,
+    displayName: params.upstream.name ?? params.providerName,
+    wireApi: params.upstream.wireApi,
+    requiresOpenAIAuth: params.upstream.requiresOpenAIAuth,
+  });
 }
 
 function isCodexAdapterRoot(candidate: string): boolean {
@@ -469,66 +631,21 @@ async function installHooksJson(params: {
   await writeFile(params.hooksConfigPath, `${JSON.stringify({ ...root, hooks }, null, 2)}\n`, "utf8");
 }
 
-export async function installCodexTokenPilot(params?: {
-  codexConfigPath?: string;
-  tokenPilotConfigPath?: string;
-  hooksConfigPath?: string;
-  providerName?: string;
-  installHooks?: boolean;
-  probeMcp?: boolean;
-  platform?: NodeJS.Platform;
-  cliBinDir?: string;
-  cliContextPath?: string;
-}): Promise<{
-  codexConfigPath: string;
-  tokenPilotConfigPath: string;
-  hooksConfigPath: string;
-  providerName: string;
-  activeProviderName: string;
-  baseUrl: string;
-  hooksInstalled: boolean;
-  mcpServerName: string;
-  cleanerMcpServerName: string;
-  expectedHookCommand: string;
-  expectedMcpCommand: string;
-  expectedMcpArgs: string[];
-  expectedCleanerMcpCommand: string;
-  expectedCleanerMcpArgs: string[];
-  expectedMcpStartupTimeoutSec: number;
-  commandSkillsDir: string;
-  commandSkillNames: string[];
-  cliBinInstalled: boolean;
-  cliBinPath: string;
-  cliLauncherPath?: string;
-  cliBinDir: string;
-  cliBinDirOnPath: boolean;
-  hostCliBinPath?: string;
-  hostCliLauncherPath?: string;
-  cleanCliBinPath?: string;
-  cleanCliLauncherPath?: string;
-  mcpProbe: {
-    ok: boolean;
-    detail: string;
-    timedOut: boolean;
-    degraded: boolean;
+export async function installCodexTokenPilot(
+  params?: CodexInstallParams,
+  dependencyOverrides: Partial<CodexInstallDependencies> = {},
+): Promise<CodexInstallResult> {
+  const dependencies: CodexInstallDependencies = {
+    ...DEFAULT_CODEX_INSTALL_DEPENDENCIES,
+    ...dependencyOverrides,
   };
-  cleanerMcpProbe: {
-    ok: boolean;
-    detail: string;
-    timedOut: boolean;
-    degraded: boolean;
-  };
-}> {
   const codexConfigPath = params?.codexConfigPath ?? defaultCodexConfigPath();
   const tokenPilotConfigPath = params?.tokenPilotConfigPath ?? defaultTokenPilotConfigPath();
   const hooksConfigPath = params?.hooksConfigPath ?? defaultHooksConfigPath();
   const tokenPilotConfig = await loadTokenPilotCodexConfig(tokenPilotConfigPath);
   const previousProxyPort = tokenPilotConfig.proxyPort;
   const commandSkillsDir = defaultCodexSkillBridgeDir(dirname(codexConfigPath));
-  const stoppedDaemon = await stopDaemon(tokenPilotConfig).catch(() => undefined);
-  tokenPilotConfig.proxyPort = await resolveAvailableCodexProxyPort(tokenPilotConfig.proxyPort, {
-    waitForPreferredMs: stoppedDaemon?.stopped ? 1_000 : 0,
-  });
+  const existing = existsSync(codexConfigPath) ? await readFile(codexConfigPath, "utf8") : "";
   const existingRootProvider = await readCodexRootModelProvider(codexConfigPath);
   const legacyBuiltInProvider = existingRootProvider === LEGACY_OPENAI_PROXY_PROVIDER
     ? "openai"
@@ -565,10 +682,20 @@ export async function installCodexTokenPilot(params?: {
       || (legacyBuiltInProvider && tokenPilotConfig.providerName === LEGACY_OPENAI_PROXY_PROVIDER))
     && existingInterceptedProxyBaseUrl === previousProxyBaseUrl
     && Boolean(tokenPilotConfig.upstream?.baseUrl);
+  const persistedUpstreamMatchesInterceptedProvider = Boolean(existingInterceptedProxyBaseUrl)
+    && (tokenPilotConfig.providerName === providerName
+      || (legacyBuiltInProvider && tokenPilotConfig.providerName === LEGACY_OPENAI_PROXY_PROVIDER))
+    && Boolean(tokenPilotConfig.upstream?.baseUrl)
+    && !isLoopbackProxyProvider(tokenPilotConfig.upstream);
   const installedProviderLooksFresh = existingInterceptedProxyBaseUrl === previousProxyBaseUrl;
-  const upstreamProvider = providerAlreadyRouted || installedProviderLooksFresh
+  const upstreamProvider = providerAlreadyRouted
+      || persistedUpstreamMatchesInterceptedProvider
+      || installedProviderLooksFresh
     ? tokenPilotConfig.upstream
     : builtInCodexProviderConfig(selectedProviderName) ?? interceptedProvider;
+  if (!upstreamProvider?.baseUrl || isLoopbackProxyProvider(upstreamProvider)) {
+    throw new Error(`Cannot install TokenPilot for ${providerName}: no direct upstream provider is available`);
+  }
   tokenPilotConfig.enabled = true;
   tokenPilotConfig.providerName = providerName;
   tokenPilotConfig.upstreamProvider = selectedProviderName;
@@ -580,7 +707,6 @@ export async function installCodexTokenPilot(params?: {
     tokenPilotConfig.upstream = upstreamProvider;
   }
   await writeTokenPilotCodexConfig(tokenPilotConfig, tokenPilotConfigPath);
-  const baseUrl = `http://127.0.0.1:${tokenPilotConfig.proxyPort}/v1`;
   const mcpServer = resolveCodexMcpServerSpecForInstall(tokenPilotConfig.stateDir);
   const mcpProbeServer = resolveCodexMcpServerSpecForProbe(tokenPilotConfig.stateDir);
   const cleanerMcpServer = resolveCodexCleanerMcpServerSpecForInstall(
@@ -591,44 +717,14 @@ export async function installCodexTokenPilot(params?: {
     tokenPilotConfig.stateDir,
     tokenPilotConfigPath,
   );
+  const directConfig = buildDirectCodexProviderConfig({
+    existing,
+    providerName,
+    builtInOpenAI,
+    upstream: upstreamProvider,
+  });
 
-  await mkdir(dirname(codexConfigPath), { recursive: true });
-  const existing = existsSync(codexConfigPath) ? await readFile(codexConfigPath, "utf8") : "";
-  if (existsSync(codexConfigPath)) {
-    await copyFile(codexConfigPath, `${codexConfigPath}.tokenpilot.bak`);
-  }
-  let next = existing;
-  next = replaceOrInsertRootAssignment(next, "model_provider", quoteToml(providerName));
-  if (builtInOpenAI) {
-    next = removeProviderSectionFamily(next, "openai");
-    next = removeProviderSectionFamily(next, LEGACY_OPENAI_PROXY_PROVIDER);
-    next = replaceOrInsertRootAssignment(next, "openai_base_url", quoteToml(baseUrl));
-  } else {
-    next = rewriteProviderSectionForProxy(next, {
-      providerName,
-      baseUrl,
-      displayName: interceptedProvider?.name ?? providerName,
-      wireApi: interceptedProvider?.wireApi ?? "responses",
-      requiresOpenAIAuth: interceptedProvider?.requiresOpenAIAuth ?? true,
-    });
-  }
-  next = upsertMcpServerSection(next, {
-    serverName: mcpServer.serverName,
-    command: mcpServer.command,
-    args: mcpServer.args,
-    env: mcpServer.env,
-    envVars: mcpServer.envVars,
-    startupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
-  });
-  next = upsertMcpServerSection(next, {
-    serverName: cleanerMcpServer.serverName,
-    command: cleanerMcpServer.command,
-    args: cleanerMcpServer.args,
-    env: cleanerMcpServer.env,
-    envVars: cleanerMcpServer.envVars,
-    startupTimeoutSec: DEFAULT_TOKENPILOT_MCP_STARTUP_TIMEOUT_SEC,
-  });
-  await writeFile(codexConfigPath, next.endsWith("\n") ? next : `${next}\n`, "utf8");
+  // Prepare every supporting asset while Codex still has its direct route.
   const hooksInstalled = params?.installHooks !== false;
   if (hooksInstalled) {
     await installHooksJson({
@@ -673,6 +769,49 @@ export async function installCodexTokenPilot(params?: {
     hostAuxConfigPath: hooksConfigPath,
   }, params?.cliContextPath);
   const expectedHookCommand = await resolveCodexHookCommandForInstall(params?.platform);
+
+  let daemon: CodexInstallResult["daemon"] | undefined;
+  let baseUrl = "";
+  try {
+    const stoppedDaemon = await dependencies.stopDaemon(tokenPilotConfig).catch(() => undefined);
+    tokenPilotConfig.proxyPort = await resolveAvailableCodexProxyPort(tokenPilotConfig.proxyPort, {
+      waitForPreferredMs: stoppedDaemon?.stopped ? 1_000 : 0,
+    });
+    await writeTokenPilotCodexConfig(tokenPilotConfig, tokenPilotConfigPath);
+
+    daemon = await dependencies.startDaemon(tokenPilotConfig, {
+      configPath: tokenPilotConfigPath,
+      codexConfigPath,
+      cliPath: join(adapterRootFromHere(), "dist", "cli.js"),
+    });
+    if (!daemon.running) {
+      throw new Error("tokenpilot_codex_daemon_unhealthy_after_start");
+    }
+
+    baseUrl = `http://127.0.0.1:${tokenPilotConfig.proxyPort}/v1`;
+    const proxiedConfig = buildProxiedCodexConfig({
+      existing,
+      providerName,
+      builtInOpenAI,
+      baseUrl,
+      interceptedProvider,
+      mcpServer,
+      cleanerMcpServer,
+    });
+    await mkdir(dirname(codexConfigPath), { recursive: true });
+    if (existsSync(codexConfigPath)) {
+      await copyFile(codexConfigPath, `${codexConfigPath}.tokenpilot.bak`);
+    }
+    await dependencies.writeCodexConfig(codexConfigPath, ensureTrailingNewline(proxiedConfig));
+  } catch (error) {
+    await dependencies.stopDaemon(tokenPilotConfig).catch(() => undefined);
+    await writeTextFileAtomic(codexConfigPath, ensureTrailingNewline(directConfig));
+    throw error;
+  }
+  if (!daemon) {
+    throw new Error("tokenpilot_codex_daemon_missing_after_start");
+  }
+
   const mcpProbeResult = params?.probeMcp === false
     ? {
       ok: false,
@@ -724,6 +863,7 @@ export async function installCodexTokenPilot(params?: {
     hostCliLauncherPath: hostCliBin?.launcherPath,
     cleanCliBinPath: cleanCliBin?.binPath,
     cleanCliLauncherPath: cleanCliBin?.launcherPath,
+    daemon,
     mcpProbe: {
       ...mcpProbeResult,
       degraded: !mcpProbeResult.ok,
