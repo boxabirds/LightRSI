@@ -118,7 +118,7 @@ If the session cannot be resolved, use `/lightrsi clean --session <session-id>`.
 /lightrsi clean --cancel <plan-id>
 ```
 
-`/tokenpilot clean` and `/tp clean` are aliases. After explicit approval, a successful OpenClaw clean archives task content through the canonical eviction backend, commits the rewrite, and returns an `applied` receipt immediately. The rewrite uses pointer stubs or drops selected content according to the replacement mode; cancelling a Cleaner plan does not undo an applied rewrite. The standalone entry is `lightrsi openclaw clean --session <session-id>`; in an interactive terminal it can open a selector after analysis.
+`/tokenpilot clean` and `/tp clean` are aliases. Explicit approval returns `scheduled` without changing the canonical transcript. Send the next ordinary OpenClaw message to execute the plan, then query `--status` for its result. During execution, the canonical eviction backend archives task content and commits the rewrite. The rewrite uses pointer stubs or drops selected content according to the replacement mode; cancelling a Cleaner plan does not undo an applied rewrite. The standalone entry is `lightrsi openclaw clean --session <session-id>`; in an interactive external terminal it can open a selector after analysis. The native command itself returns a text plan, not an arrow-key selector. Native commands and the CLI share plans and receipts.
 
 See [Context Cleaner](/user-guide/context-cleaner) for task protection, accounting, and cancellation limits.
 

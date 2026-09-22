@@ -59,7 +59,7 @@ User-approved Cleaner results are tracked by plan receipt, separately from the g
 lightrsi <host> clean --status <plan-id>
 ```
 
-Use `openclaw`, `codex`, or `claude-code` for `<host>`. Distinguish estimated and scheduled savings from applied savings; character-based counts are not token counts or provider billing savings. See [Context Cleaner](/user-guide/context-cleaner#_3-check-the-result). DeepSeek Harness does not currently expose this Cleaner command.
+Use `openclaw`, `codex`, or `claude-code` for `<host>`. Distinguish estimated and scheduled savings from applied savings; character-based counts are not token counts or provider billing savings. See [Context Cleaner](/user-guide/context-cleaner#_3-check-the-result). For DeepSeek Harness, query the native `/tokenpilot-clean --status <plan-id>` command instead; the shared CLI command above is not available.
 
 ## Next
 

@@ -1,9 +1,15 @@
 # Changelog
 
+## Context Cleaner Workflow Updates (2026-09-22)
+
+- DeepSeek Harness exposes native `/tokenpilot-clean` analysis, explicit selection, status, and cancellation. Accepted selections execute on the next ordinary agent request; the shared external CLI is not yet registered.
+- OpenClaw now persists an approved selection as `scheduled` and executes it on the next ordinary request. Native commands and the external CLI share plans and receipts.
+- OpenClaw and DSH native commands return text plans; this does not imply Host-terminal arrow-key selection support.
+
 ## Context Cleaner (2026-09-16)
 
 - User-approved task-level context cleaning is available through [Context Cleaner](/user-guide/context-cleaner).
-- OpenClaw supports immediate canonical apply; Codex and Claude Code schedule approved selections for a subsequent eligible request.
+- The initial OpenClaw integration used immediate canonical apply (superseded by the scheduled workflow above); Codex and Claude Code schedule approved selections for a subsequent eligible request.
 - Plans expose protected tasks and accounting; receipts distinguish analysis, scheduling, and application.
 - Codex offers a terminal selector and a host-rendered MCP form. Claude Code's analysis skill leaves task selection and approval to the user.
 
