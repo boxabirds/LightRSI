@@ -14,7 +14,7 @@ This catalog introduces LightRSI's context-management preset and user-facing cle
 
 [Context Cleaner](/user-guide/context-cleaner) provides an inspect, select, approve, and verify workflow for task-level cleanup. It reuses shared task and host rewrite capabilities. It is a user-facing product, while TokenPilot is a preset of context-management policies.
 
-Public Cleaner entrypoints are available for OpenClaw, Codex, and Claude Code. DeepSeek Harness currently exposes automatic eviction and session status, but no public Cleaner workflow. See [Cleaner host support](/user-guide/context-cleaner#supported-hosts).
+Public Cleaner entrypoints are available for all four hosts. DeepSeek Harness provides native `/tokenpilot-clean` commands with explicit task selection; its external CLI and Host-terminal arrow-key selector are not yet available. See [Cleaner host support](/user-guide/context-cleaner#supported-hosts).
 
 ## Host Plugins and Adapters
 

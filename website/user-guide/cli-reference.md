@@ -121,10 +121,10 @@ Analysis does not rewrite context. A terminal may then open a selector; a non-TT
 
 | Host | In-host entry | Apply timing |
 | :-- | :-- | :-- |
-| OpenClaw | `/lightrsi clean`; use the same plan/select/status/cancel options | Successful explicit apply returns `applied` immediately |
+| OpenClaw | `/lightrsi clean`; use the same plan/select/status/cancel options | Selection returns `scheduled`; the next ordinary request executes it |
 | Codex | User-entered `!lightrsi-clean` terminal selector or installed `lightrsi-clean` MCP-form skill | Next eligible host request |
 | Claude Code | Installed `lightrsi-clean` skill is analysis-only; approve with explicit plan and task IDs | Next eligible host request |
-| DeepSeek Harness | No public Cleaner command in the current adapter | Not exposed |
+| DeepSeek Harness | Native `/tokenpilot-clean` with plan/select/status/cancel options; no shared CLI backend | Scheduled for the next ordinary agent request |
 
 For installation, interactive controls, protected tasks, and receipt meanings, see [Context Cleaner](/user-guide/context-cleaner).
 

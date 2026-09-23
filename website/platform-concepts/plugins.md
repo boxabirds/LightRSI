@@ -20,7 +20,7 @@ These layers have different responsibilities:
 | [TokenPilot](/plugin-catalog/tokenpilot/overview) | Preset | Composes cache-aware context-management policies |
 | [Context Cleaner](/user-guide/context-cleaner) | Product | Presents tasks and recommendations, takes explicit approval, and reports cleanup status |
 
-Cleaner reuses shared task lifecycle and host rewrite capabilities. Its public workflow is available for OpenClaw, Codex, and Claude Code; DeepSeek Harness does not currently expose a public Cleaner entrypoint.
+Cleaner reuses shared task lifecycle and host rewrite capabilities. Its public workflow is available for all four hosts. DeepSeek Harness provides native `/tokenpilot-clean` commands; it is not registered in the shared CLI.
 
 ## Native Host Plugins
 

@@ -2,7 +2,7 @@
 
 TokenPilot integrates with DeepSeek Harness as a native **Cordis plugin**, registered as `tokenpilot-dsh`. It uses task-state estimation to identify completed work and can replace eligible older content in the context that Harness sends to the model.
 
-Harness continues to own model transport, session persistence, and native compaction. The adapter adds optional context eviction and a read-only session status command; it does not add the proxy-based stable-prefix and reduction pipeline used by other hosts.
+Harness continues to own model transport, session persistence, and native compaction. The adapter adds optional automatic context eviction, user-approved Context Cleaner, and a read-only session status command; it does not add the proxy-based stable-prefix and reduction pipeline used by other hosts.
 
 ## Install
 
@@ -62,7 +62,7 @@ Eviction requires the master switch, estimator switch, and eviction switch to be
 
 | Setting | Default | Purpose |
 | :-- | :-- | :-- |
-| `enabled` | `false` | Enable the adapter's eviction handler |
+| `enabled` | `false` | Enable the adapter runtime, including scheduled Cleaner execution |
 | `stateDir` | Unset | Persistent directory for the task registry |
 | `taskStateEstimator.enabled` | `false` | Enable task-state estimation |
 | `taskStateEstimator.baseUrl`, `apiKey`, `model` | Unset | Endpoint, credentials, and model for the estimator |
@@ -100,6 +100,42 @@ An enabled adapter does not guarantee an eviction on every turn. A new session m
 
 The status command requires Harness's `commands` and `sessionProjections` services. A headless composition without those services can load the adapter but will not expose this command.
 
+## Context Cleaner
+
+The native `/tokenpilot-clean` command analyzes the current session and returns a text plan. It does not provide an arrow-key selector. `/context-cleaner` is an alias.
+
+For a Cleaner-only workflow, use the profile configuration above with `enabled: true`, a persistent `stateDir`, and the estimator's `enabled`, `baseUrl`, `apiKey`, and `model` configured, but set `eviction.enabled: false`. Task-state tracking remains active while automatic eviction is disabled. Retain the other configuration fields when updating the profile patch.
+
+Finish a task and send a later ordinary request so the estimator can record its completed state. Then analyze:
+
+```text
+/tokenpilot-clean
+```
+
+Check the displayed session and plan. `[ ]` identifies selectable tasks; `[-]` identifies protected tasks. The snapshot uses `chars_only` accounting, not token counts. If needed, analyze an explicit session with `/tokenpilot-clean --session <session-id>`.
+
+Approve only the task IDs you selected from that plan:
+
+```text
+/tokenpilot-clean --plan <plan-id> --select <task-id-1>,<task-id-2>
+```
+
+An accepted selection returns `scheduled` without changing the live surface. Send the next ordinary agent request: the `agent/pre-step` hook claims the schedule and executes the surface transaction. A Cleaner claim prevents automatic eviction from rewriting the same request. Check the real result afterward:
+
+```text
+/tokenpilot-clean --status <plan-id>
+```
+
+To cancel before execution:
+
+```text
+/tokenpilot-clean --cancel <plan-id>
+```
+
+Analysis, status, and cancellation do not start a model turn or rewrite model-visible context. A successful execution records `applied` with revision evidence; scheduling alone is not proof of application. Terminal receipts prevent the same plan from being applied again, and cancellation does not undo an applied clean.
+
+The native command requires the host's `commands` service. The current session is supplied by the command invocation, so a separate `sessions` service is optional: without it, the adapter uses a current-session-only store. Accessing another session with `--session` requires the host's session lookup capability; an unavailable target returns an error. Executing a scheduled clean additionally requires the enabled adapter runtime and the host's `tokenMeter` service. The external `lightrsi deepseek-harness clean` command is not registered. See [Context Cleaner](/user-guide/context-cleaner) for shared plan and receipt concepts.
+
 ## How Eviction Works
 
 On an eligible agent step, TokenPilot reads session events, updates task lifecycle state, validates eviction candidates, and applies replacements to the current context. By default, this runs **before Harness native compaction**, then re-measures context size so subsequent processing sees the updated size.
@@ -120,13 +156,13 @@ Replacements are recorded as new session events; the original event log remains 
 | Tasks remain in context | They may still be active, unresolved, current, too small, or fail tool-pair safety checks; inspect deferrals before expecting savings |
 | Optimization is skipped | Set `logLevel` to `debug` and inspect `[tokenpilot:dsh] pre-step` logs for reasons such as `estimator-not-configured`, `registry-not-configured`, or `unrecognized-required-event` |
 
-To disable automatic eviction, set `eviction.enabled` to `false`. To disable the eviction handler entirely, set the top-level `enabled` to `false`, then reload the configured profile. Disabling future eviction does not undo context changes already applied.
+To disable automatic eviction, set `eviction.enabled` to `false`; this still permits the Cleaner-only workflow above. To disable the adapter runtime, including scheduled Cleaner execution, set the top-level `enabled` to `false`, then reload the configured profile. Disabling future execution does not undo context changes already applied.
 
 ## Integration Boundaries
 
 DeepSeek Harness uses its own plugin installation and `/tokenpilot-status` command. The shared `lightrsi ... doctor`, `report`, `visual`, and runtime-mode walkthroughs for other hosts do not apply to this integration.
 
-The current Cordis entrypoint does not expose a public [Context Cleaner](/user-guide/context-cleaner) workflow. Cleaner backend modules in the repository do not make `/tokenpilot-status` an interactive clean command; automatic eviction and user-approved Cleaner plans are separate capabilities.
+Use `/tokenpilot-clean` for user-approved Cleaner plans and their receipts. `/tokenpilot-status` is the separate automatic eviction status command. Native Cleaner commands currently return text plans with explicit task-ID selection; an external CLI or Host-terminal arrow-key workflow is not yet available.
 
 For adapter development, see [Adapter Testing](/host-adapter-development/adapter-testing). The compatibility smoke checks package installation and host integration; it is separate from validating eviction with your estimator and live sessions.
 

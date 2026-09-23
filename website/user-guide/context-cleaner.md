@@ -27,10 +27,10 @@ Cleaner reuses task lifecycle and host rewrite capabilities. It is not a command
 
 | Host | User entry point | When an approved clean takes effect |
 | :-- | :-- | :-- |
-| OpenClaw | `/lightrsi clean` or `lightrsi openclaw clean --session <session-id>` | A successful explicit apply returns `applied` immediately |
+| OpenClaw | `/lightrsi clean` or `lightrsi openclaw clean --session <session-id>` | Approval returns `scheduled`; the next ordinary host request performs the canonical rewrite |
 | Codex | `!lightrsi-clean` for the terminal selector; the installed `lightrsi-clean` skill for the MCP form; or `lightrsi codex clean` | Selection is scheduled for the next eligible host request |
 | Claude Code | Installed `lightrsi-clean` analysis skill or `lightrsi claude-code clean` | Selection is scheduled for the next eligible host request |
-| DeepSeek Harness | No public Cleaner command is wired into the current adapter entrypoint | Its automatic eviction and `/tokenpilot-status` are separate features |
+| DeepSeek Harness | Native `/tokenpilot-clean` with explicit task IDs | Selection is scheduled for the next ordinary agent request |
 
 For OpenClaw, Codex, and Claude Code, the shared terminal CLI supports analysis, explicit selection, status, and cancellation. The host-specific interfaces differ as described below.
 
@@ -57,7 +57,7 @@ corepack pnpm cleaner:install:claude-code
 ```
 :::
 
-The Codex and Claude Code installers build the shared CLI, recovery MCP, and selected adapter, then install the Cleaner command skills. Codex also registers the Cleaner MCP server used for its task-selection form. DeepSeek Harness has no equivalent public Cleaner installer in this workflow.
+The Codex and Claude Code installers build the shared CLI, recovery MCP, and selected adapter, then install the Cleaner command skills. Codex also registers the Cleaner MCP server used for its task-selection form. For DeepSeek Harness, install its native plugin and follow the [Cleaner setup](/hosts/deepseek-harness#context-cleaner); it is not registered in the shared CLI.
 
 For the OpenClaw shared CLI, use a Bash environment and ensure `~/.local/bin` (or your `LIGHTRSI_BIN_DIR`) is on `PATH`. Codex and Claude Code installers use `~/.local/bin` by default on Linux/macOS; on Windows they create command launchers and use the npm command directory when it is already on `PATH`.
 
@@ -121,7 +121,7 @@ The plan includes its ID, host/session, context usage, protected and unassigned 
 | `[ ]` / `[x]` | Unselected / selected task in the terminal selector |
 | `exact`, `estimated`, `chars_only` | Accounting mode; character counts are not token counts |
 
-Current OpenClaw and Claude Code Cleaner snapshots use character counts. Codex uses precise tokenizer counts when available and otherwise falls back to characters. A dash in the share column is not zero usage, and a context-window percentage is shown only when the required token and window data are available.
+Current OpenClaw, Claude Code, and DeepSeek Harness Cleaner snapshots use character counts. Codex uses precise tokenizer counts when available and otherwise falls back to characters. A dash in the share column is not zero usage, and a context-window percentage is shown only when the required token and window data are available.
 
 For the raw terminal selector, **Up/Down** moves between selectable tasks, **Space** toggles a task, and **Enter submits the checked selection**. Tasks start unchecked. `q` or Escape cancels; Ctrl+C interrupts and cancels the plan. Submitting no selected tasks applies no change. These keys describe the terminal selector, not a host-rendered MCP form.
 
@@ -149,7 +149,7 @@ lightrsi <host> clean --status <plan-id>
 | `cancelled` | The plan has been cancelled |
 | `failed` | The clean failed; inspect its reasons and fallback information |
 
-For Codex and Claude Code, a `scheduled` receipt is expected immediately after approval. Resume the same session with a normal follow-up request, then check the receipt again. The request used to submit the selection is not itself proof that the clean has been applied. OpenClaw's successful explicit apply returns an `applied` receipt immediately.
+For OpenClaw, Codex, Claude Code, and DeepSeek Harness, an accepted selection is scheduled for a subsequent eligible request. Resume the same session with a normal follow-up request, then check the receipt again. The request used to submit the selection is not itself proof that the clean has been applied.
 
 Keep **estimated**, **scheduled**, and **applied** savings separate. A plan estimate or pending schedule does not establish that context was removed, and Cleaner context-size accounting is not a measurement of provider billing savings.
 
@@ -175,7 +175,7 @@ Inside an OpenClaw conversation:
 /lightrsi clean --cancel <plan-id>
 ```
 
-The first command analyzes the mapped current session; provide a session ID if no mapping is available. The native analysis command does not apply a rewrite. `/tokenpilot clean` and `/tp clean` are aliases.
+The first command analyzes the mapped current session; provide a session ID if no mapping is available. The native command returns a text plan, not an arrow-key selector. Analysis does not apply a rewrite. Selection only schedules work; send the next ordinary OpenClaw message to execute it and then query the receipt. `/tokenpilot clean` and `/tp clean` are aliases.
 
 The native command can classify pending turns and generate recommendations through OpenClaw's host-managed model completion service. Older hosts without that service fall back to explicitly configured `taskStateEstimator` settings. Do not assume the standalone terminal entrypoint has the same host-managed model access. OpenClaw's canonical eviction backend archives task content before committing the rewrite, which replaces the selected content with a pointer stub or drops it according to the replacement mode. This archive does not make Cleaner cancellation an undo operation.
 
@@ -201,7 +201,9 @@ The shared installer also provides the explicit status, apply, and cancel skills
 
 ### DeepSeek Harness
 
-The repository contains Cleaner backend modules for Harness, but its current Cordis entrypoint and command registration do not expose a public Cleaner workflow. Do not use `lightrsi deepseek-harness clean` or assume `/tokenpilot-status` can analyze, approve, or cancel Cleaner plans. See [DeepSeek Harness](/hosts/deepseek-harness) for its implemented automatic eviction and status workflow.
+Use the native `/tokenpilot-clean` command to analyze the current session. It returns a text plan; choose explicit task IDs with `--plan <plan-id> --select <task-id>`, then send the next ordinary agent request and query `--status <plan-id>`. Use `--cancel <plan-id>` before execution to cancel. `/context-cleaner` is an alias.
+
+The command does not provide an arrow-key selector. The shared CLI does not register `deepseek-harness`, so `lightrsi deepseek-harness clean` is not available. `/tokenpilot-status` reports automatic eviction state rather than a Cleaner plan receipt. See [DeepSeek Harness](/hosts/deepseek-harness#context-cleaner) for configuration and full native commands.
 
 ## Protected Context and Recommendations
 
@@ -217,7 +219,7 @@ Task descriptions and recommendations help you understand the plan. They do not 
 | Everything is protected or unassigned | Check task lifecycle information and host estimator setup; active or uncertain tasks must remain protected |
 | No interactive selector | A non-TTY invocation is analysis-only. Use a real terminal, the supported Codex MCP form, or the explicit plan/selection command |
 | Plan is `stale` | Analyze the current session again and review the new plan; do not reuse old task IDs without checking |
-| Receipt stays `scheduled` | Continue the same Codex/Claude Code session, then query the receipt; inspect reasons if application is deferred |
+| Receipt stays `scheduled` | Send an ordinary request in the same host session, then query the receipt; inspect reasons if application is deferred |
 | Counts are in characters | The snapshot has no supported precise token counts; do not interpret characters as tokens |
 | Codex form is unavailable | Check `lightrsi codex doctor`; recovery MCP and Cleaner MCP health are reported separately. The terminal selector is a separate entrypoint |
 | Claude Code skill only prints analysis | This is intentional. Task selection and approval require your explicit action |
