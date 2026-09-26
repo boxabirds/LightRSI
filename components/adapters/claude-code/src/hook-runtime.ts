@@ -1,5 +1,6 @@
 import { appendClaudeCodeTrace } from "./trace.js";
 import { loadTokenPilotClaudeCodeConfig, type TokenPilotClaudeCodeConfig } from "./config.js";
+import { resolveClaudeHostPid } from "./host-process.js";
 import { upsertClaudeCodeSessionSnapshot } from "./session-state.js";
 
 function stringValue(value: unknown): string | undefined {
@@ -79,9 +80,14 @@ export async function processClaudeCodeHookEvent(params: {
   const tool = extractToolEvent(input);
 
   if (sessionId) {
+    // The hook runs as a descendant of the `claude` process that owns this
+    // session. Recording that pid lets a CLI Claude Code starts later bind to
+    // this exact session instead of guessing the most recently active one.
+    const hostPid = await resolveClaudeHostPid();
     await upsertClaudeCodeSessionSnapshot(config.stateDir, sessionId, {
       workspaceHint,
       lastHookEvent: hookEventName,
+      ...(hostPid === undefined ? {} : { hostPid }),
       lastToolName: tool.toolName,
       lastToolInputChars: tool.toolInputChars,
       lastToolOutputChars: tool.toolOutputChars,

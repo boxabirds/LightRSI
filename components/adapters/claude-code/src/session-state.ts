@@ -15,6 +15,8 @@ export type ClaudeCodeSessionSnapshot = {
   workspaceHint?: string;
   disclosedReadPaths?: string[];
   lastHookEvent?: string;
+  /** pid of the `claude` process that owns this session, when it could be resolved. */
+  hostPid?: number;
   lastToolName?: string;
   lastToolInputChars?: number;
   lastToolOutputChars?: number;
@@ -68,6 +70,7 @@ export async function upsertClaudeCodeSessionSnapshot(
     workspaceHint: patch.workspaceHint ?? current?.workspaceHint,
     disclosedReadPaths: patch.disclosedReadPaths ?? current?.disclosedReadPaths,
     lastHookEvent: patch.lastHookEvent ?? current?.lastHookEvent,
+    hostPid: patch.hostPid ?? current?.hostPid,
     lastToolName: patch.lastToolName ?? current?.lastToolName,
     lastToolInputChars: patch.lastToolInputChars ?? current?.lastToolInputChars,
     lastToolOutputChars: patch.lastToolOutputChars ?? current?.lastToolOutputChars,

@@ -8,7 +8,9 @@ import { CLI_HOSTS, parseCliHostId, resolveLatestCliReportHost, type CliHostId }
 import { createCliHostRuntime, registerBuiltInCliHostProducts } from "./hosts/factory.js";
 import { handleStandaloneVisualCommandWithSelection } from "./hosts/visual.js";
 import {
+  cleanCommandRequiresSessionId,
   cleanSessionIdFromArgs,
+  formatCleanSessionRequired,
   formatCleanUsage,
   handleCleanCommand,
   resolveCleanCommandBackend,
@@ -64,6 +66,8 @@ async function resolveTarget(argv: string[]): Promise<{
   target?: HostTarget;
   commandArgs: string[];
   handledText?: string;
+  /** True only when this invocation's argv named the session, not stored context. */
+  sessionFromArgv?: boolean;
 }> {
   if (parseBooleanContextCommand(argv)) {
     const state = await readCliContextState();
@@ -120,6 +124,7 @@ async function resolveTarget(argv: string[]): Promise<{
           pathOverrides: await resolvePathOverrides(explicitHost),
         },
         commandArgs,
+        sessionFromArgv: Boolean(sessionId),
       };
     }
     return {
@@ -145,7 +150,7 @@ export async function dispatchCli(argv: string[]): Promise<ProductCommandResult>
     return { text: resolved.handledText };
   }
 
-  const { target, commandArgs } = resolved;
+  const { target, commandArgs, sessionFromArgv } = resolved;
   if (commandArgs.length === 1 && commandArgs[0] === "visual") {
     return handleStandaloneVisualCommandWithSelection({
       host: target?.host,
@@ -191,10 +196,24 @@ export async function dispatchCli(argv: string[]): Promise<ProductCommandResult>
     if (commandArgs.slice(1).some((argument) => argument === "--help" || argument === "-h")) {
       return { text: formatCleanUsage() };
     }
-    const requestedSessionId = cleanSessionIdFromArgs(commandArgs.slice(1)) ?? effectiveTarget.sessionId;
-    const resolvedSessionId = requestedSessionId
-      ? await runtime.resolveSessionId(requestedSessionId)
-      : await runtime.maybeResolveLatestSessionId();
+    // RY-03: the Cleaner entry point binds to the session named in this
+    // invocation, or to one the Host can vouch for. Stored context can carry a
+    // session an earlier latest-session guess wrote, so it is not an explicit
+    // choice here, and analyzing the wrong conversation is not recoverable.
+    const boundSessionId = cleanSessionIdFromArgs(commandArgs.slice(1))
+      ?? (sessionFromArgv ? effectiveTarget.sessionId : undefined)
+      ?? await runtime.resolveCurrentSessionId?.();
+    if (!boundSessionId && cleanCommandRequiresSessionId(commandArgs.slice(1))) {
+      return {
+        text: formatCleanSessionRequired({
+          hostId: effectiveTarget.host,
+          recentSessionId: await runtime.maybeResolveLatestSessionId(),
+        }),
+      };
+    }
+    const resolvedSessionId = boundSessionId
+      ? await runtime.resolveSessionId(boundSessionId)
+      : undefined;
     const cleanPathOverrides = await resolvePathOverrides(effectiveTarget.host)
       ?? effectiveTarget.pathOverrides;
     const backend = await resolveCleanCommandBackend({
