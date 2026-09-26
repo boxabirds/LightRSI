@@ -27,8 +27,13 @@ import type {
 import type { TokenPilotDshConfig } from "../config.js";
 import type { DshSession, DshTokenMeter } from "../types.js";
 import { createDshCleanerCapabilities } from "./capabilities.js";
+import { persistDshCleanerSnapshot } from "./persisted-snapshot.js";
 import { cancelDshCleanerSchedule, readDshCleanerSchedule } from "./scheduler.js";
-import type { DshCleanSnapshotSession } from "./snapshot.js";
+import {
+  buildDshCleanSnapshot,
+  surfaceRevision,
+  type DshCleanSnapshotSession,
+} from "./snapshot.js";
 import type { DshCleanerSessionStore } from "./session-catalog.js";
 
 /** The optional DSH command capability used by the Cleaner. */
@@ -54,6 +59,7 @@ export type ContextCleanerCommandDependencies = {
 type Runtime = {
   readonly stateDir: string;
   readonly sessions: DshCleanerSessionStore;
+  readonly loadRegistry: (sessionId: string) => Promise<SessionTaskRegistry> | SessionTaskRegistry;
   readonly control: ContextCleanerControlService;
 };
 
@@ -100,6 +106,7 @@ function createRuntime(
   return {
     stateDir,
     sessions,
+    loadRegistry,
     control: createContextCleanerControlService({
       stateDir,
       capabilities,
@@ -107,6 +114,23 @@ function createRuntime(
       ...(dependencies.now ? { now: dependencies.now } : {}),
     }),
   };
+}
+
+/**
+ * Publish only canonical snapshot metadata to `stateDir` for a trusted
+ * external consumer. The external process never receives DSH events or the
+ * model-visible text itself, and it has no route to mutate this live session.
+ */
+async function publishRuntimeSnapshot(runtime: Runtime, sessionId: string): Promise<void> {
+  const session = runtime.sessions.get(sessionId);
+  if (!session) throw new Error("dsh_clean_snapshot_unavailable");
+  const registry = await runtime.loadRegistry(sessionId);
+  const { snapshot } = buildDshCleanSnapshot({
+    session,
+    registry,
+    revision: surfaceRevision(session),
+  });
+  await persistDshCleanerSnapshot({ stateDir: runtime.stateDir, snapshot });
 }
 function helpText(): string {
   return [
@@ -241,6 +265,7 @@ async function analyze(
   if (!runtime.sessions.get(targetSessionId)) {
     return { kind: "error", text: "Context Cleaner session is unavailable in this DSH host." };
   }
+  await publishRuntimeSnapshot(runtime, targetSessionId);
   const plan = await runtime.control.analyze(targetSessionId);
   const receipt = await runtime.control.readReceipt(plan.planId);
   return { kind: "success", text: formatPlan(plan, receipt?.fallbackUsed ?? false) };

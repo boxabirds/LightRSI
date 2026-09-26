@@ -2,8 +2,9 @@
  * Context Cleaner request-lifecycle orchestration for DeepSeek Harness.
  *
  * This runs before automatic eviction and native compaction. A successful
- * Cleaner claim marks the current pre-step so automatic eviction can skip the
- * same surface; both systems therefore never rewrite the same request twice.
+ * Cleaner claim marks the current agent turn so automatic eviction can skip
+ * every later step in the same request; both systems therefore never rewrite
+ * the same request twice.
  */
 
 import { loadSessionTaskRegistry } from "@lightrsi/history";
@@ -24,24 +25,31 @@ import {
   readDshCleanerSchedule,
   type DshCleanerClaimedRecord,
 } from "./context-cleaner/scheduler.js";
-import { surfaceRevision, type DshCleanSnapshotSession } from "./context-cleaner/snapshot.js";
+import { persistDshCleanerSnapshot } from "./context-cleaner/persisted-snapshot.js";
+import {
+  buildDshCleanSnapshot,
+  surfaceRevision,
+  type DshCleanSnapshotSession,
+} from "./context-cleaner/snapshot.js";
 import type { DshCleanerSessionStore } from "./context-cleaner/session-catalog.js";
 import type { CycleSession } from "./eviction-cycle.js";
 import type { DshPluginContext, DshPreStepPayload } from "./types.js";
 
 const CLAIM_RECOVERY_AFTER_MS = 30_000;
 
-/** Request-local signal shared with the automatic eviction handler. */
+/** Agent-turn-local signal shared with the automatic eviction handler. */
 export type DshCleanerPreStepState = {
   markClaimed(payload: DshPreStepPayload): void;
   wasClaimed(payload: DshPreStepPayload): boolean;
 };
 
 export function createDshCleanerPreStepState(): DshCleanerPreStepState {
-  const claimed = new WeakSet<object>();
+  const claimedTurnByAgent = new WeakMap<object, string>();
+  const turnKey = (payload: DshPreStepPayload) =>
+    `${payload.agent.session.id}\u0000${payload.turn}`;
   return {
-    markClaimed(payload) { claimed.add(payload); },
-    wasClaimed(payload) { return claimed.has(payload); },
+    markClaimed(payload) { claimedTurnByAgent.set(payload.agent, turnKey(payload)); },
+    wasClaimed(payload) { return claimedTurnByAgent.get(payload.agent) === turnKey(payload); },
   };
 }
 
@@ -60,6 +68,24 @@ function terminalStatus(receiptStatus: string): "applied" | "stale" | "cancelled
 
 function sameTaskIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((taskId) => right.includes(taskId));
+}
+
+/**
+ * DSH publishes a metadata-only snapshot while it owns the live session.
+ * Failures are deliberately non-fatal: a missing/stale snapshot makes an
+ * external CLI unavailable, but must never interrupt a normal agent turn.
+ */
+async function publishDshCleanerSnapshot(params: {
+  stateDir: string;
+  session: DshCleanSnapshotSession;
+}): Promise<void> {
+  const registry = await loadSessionTaskRegistry(params.stateDir, params.session.id);
+  const { snapshot } = buildDshCleanSnapshot({
+    session: params.session,
+    registry,
+    revision: surfaceRevision(params.session),
+  });
+  await persistDshCleanerSnapshot({ stateDir: params.stateDir, snapshot });
 }
 
 /**
@@ -160,6 +186,10 @@ export function registerDshCleanerPreStep(
       if (payload.signal.aborted) return next();
 
       const session = payload.agent.session;
+      await publishDshCleanerSnapshot({
+        stateDir,
+        session: session as unknown as DshCleanSnapshotSession,
+      }).catch(() => undefined);
       const scheduled = await readDshCleanerSchedule({ stateDir, sessionId: session.id });
       if (scheduled.outcome === "claimed") {
         await reconcileClaimedSchedule({
@@ -221,6 +251,10 @@ export function registerDshCleanerPreStep(
           updatedAt: outcome.receipt.updatedAt,
           claimId: claim.claimId,
         });
+        await publishDshCleanerSnapshot({
+          stateDir,
+          session: session as unknown as DshCleanSnapshotSession,
+        }).catch(() => undefined);
       } else if (outcome.outcome === "terminal") {
         const status = terminalStatus(outcome.receipt.status);
         if (status) {
@@ -248,17 +282,32 @@ export function registerDshCleanerPreStep(
         }
       } else if (outcome.outcome === "failed") {
         if (outcome.surfaceChanged) ctx.tokenMeter.measure(session);
-        if (outcome.receipt) {
-          await finalizeDshCleanerSchedule({
+        await finalizeDshCleanerSchedule({
+          stateDir,
+          sessionId: session.id,
+          cleanPlanId: claim.cleanPlanId,
+          receiptStatus: "failed",
+          reasons: outcome.receipt?.reasons ?? outcome.reasons,
+          ...(outcome.receipt ? { updatedAt: outcome.receipt.updatedAt } : {}),
+          claimId: claim.claimId,
+        });
+        if (outcome.surfaceChanged) {
+          await publishDshCleanerSnapshot({
             stateDir,
-            sessionId: session.id,
-            cleanPlanId: claim.cleanPlanId,
-            receiptStatus: "failed",
-            reasons: outcome.receipt.reasons,
-            updatedAt: outcome.receipt.updatedAt,
-            claimId: claim.claimId,
-          });
+            session: session as unknown as DshCleanSnapshotSession,
+          }).catch(() => undefined);
         }
+      } else if (outcome.outcome === "skipped") {
+        // A claim has already been persisted. Preserve at-most-once semantics
+        // even for an unexpected non-terminal prepare outcome.
+        await finalizeDshCleanerSchedule({
+          stateDir,
+          sessionId: session.id,
+          cleanPlanId: claim.cleanPlanId,
+          receiptStatus: "failed",
+          reasons: outcome.reasons.length > 0 ? outcome.reasons : ["clean_prepare_skipped"],
+          claimId: claim.claimId,
+        });
       }
     } catch {
       if (claim) {
