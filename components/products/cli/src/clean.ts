@@ -174,10 +174,9 @@ async function approveSelection(
  * Claude Code runs a skill's command through its Bash tool, which gets no
  * pseudo-terminal, so the arrow-key selector cannot open there. The plan is
  * still worth showing; what the user needs alongside it is the one command
- * that does reach a real terminal. Suspending Claude Code hands the terminal
- * back to the shell it was started from without ending the session, and the
- * session id is carried explicitly so the selector binds to this conversation
- * rather than whichever one wrote state most recently.
+ * that does reach a real terminal. Exiting returns to the same shell; the
+ * session id is carried explicitly so the selector binds to this conversation,
+ * and Claude Code can then resume that exact session.
  *
  * --require-tty has to lead: parseCleanArgs only accepts it in first position.
  */
@@ -185,10 +184,10 @@ function interactiveLaunchHint(plan: CleanPlanView): string | undefined {
   if (plan.hostId !== "claude-code") return undefined;
   return [
     "Interactive selection in this same terminal:",
-    "  1. Suspend Claude Code with Ctrl+Z",
+    "  1. In Claude Code, run /exit to return to this terminal",
     `  2. Run: lightrsi claude-code clean --require-tty --session ${plan.sessionId}`,
     "  3. Move with Up/Down, toggle with Space, submit with Enter, cancel with q",
-    "  4. Return to Claude Code with fg",
+    `  4. Resume the same session: claude --resume ${plan.sessionId}`,
     "",
     "Submitting only schedules the selection; it is applied on the next Claude Code request.",
   ].join("\n");

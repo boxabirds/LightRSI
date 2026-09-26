@@ -26,6 +26,11 @@ export type HostProcessProbe = {
   readProcess(pid: number): Promise<{ ppid: number; command: string } | undefined>;
 };
 
+export type HostProcessCommandRunner = (
+  command: string,
+  args: readonly string[],
+) => Promise<{ stdout: string }>;
+
 function looksLikeClaudeHost(command: string): boolean {
   // `ps -o comm=` prints the executable, which is plain `claude` for the CLI.
   // Guard against matching this adapter's own node processes or a path that
@@ -36,21 +41,70 @@ function looksLikeClaudeHost(command: string): boolean {
   return basename === "claude" || basename === "claude.exe";
 }
 
-const defaultProbe: HostProcessProbe = {
-  async readProcess(pid) {
-    if (process.platform === "win32") return undefined;
-    try {
-      const { stdout } = await execFileAsync("ps", ["-o", "ppid=,comm=", "-p", String(pid)]);
-      const line = stdout.trim();
-      if (!line) return undefined;
-      const match = /^\s*(\d+)\s+(.*)$/.exec(line);
-      if (!match) return undefined;
-      return { ppid: Number.parseInt(match[1]!, 10), command: match[2]! };
-    } catch {
-      return undefined;
-    }
-  },
+const systemCommandRunner: HostProcessCommandRunner = async (command, args) => {
+  const { stdout } = await execFileAsync(command, [...args], { windowsHide: true });
+  return { stdout };
 };
+
+/** Builds the platform probe separately so the Windows path is deterministic in tests. */
+export function createSystemHostProcessProbe(params?: {
+  platform?: NodeJS.Platform;
+  run?: HostProcessCommandRunner;
+}): HostProcessProbe {
+  const platform = params?.platform ?? process.platform;
+  const run = params?.run ?? systemCommandRunner;
+  let windowsProcessTable: Promise<Map<number, { ppid: number; command: string }>> | undefined;
+
+  const readWindowsProcessTable = async () => {
+    const script = [
+      "$processInfo = Get-CimInstance Win32_Process",
+      "[Console]::Out.Write(($processInfo | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress))",
+    ].join("; ");
+    const { stdout } = await run("powershell.exe", [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      script,
+    ]);
+    const parsed = JSON.parse(stdout) as unknown;
+    const records = Array.isArray(parsed) ? parsed : [parsed];
+    const table = new Map<number, { ppid: number; command: string }>();
+    for (const value of records) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const record = value as Record<string, unknown>;
+      const processId = record.ProcessId;
+      const ppid = record.ParentProcessId;
+      const command = record.Name;
+      if (!Number.isSafeInteger(processId) || Number(processId) <= 0
+        || !Number.isSafeInteger(ppid) || Number(ppid) < 0
+        || typeof command !== "string" || !command.trim()) continue;
+      table.set(Number(processId), { ppid: Number(ppid), command });
+    }
+    return table;
+  };
+
+  return {
+    async readProcess(pid) {
+      if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
+      try {
+        if (platform === "win32") {
+          windowsProcessTable ??= readWindowsProcessTable();
+          return (await windowsProcessTable).get(pid);
+        }
+
+        const { stdout } = await run("ps", ["-o", "ppid=,comm=", "-p", String(pid)]);
+        const line = stdout.trim();
+        if (!line) return undefined;
+        const match = /^\s*(\d+)\s+(.*)$/.exec(line);
+        if (!match) return undefined;
+        return { ppid: Number.parseInt(match[1]!, 10), command: match[2]! };
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
 
 /**
  * Walks up from `startPid` and returns the pid of the nearest ancestor that is
@@ -61,7 +115,7 @@ export async function resolveClaudeHostPid(params?: {
   startPid?: number;
   probe?: HostProcessProbe;
 }): Promise<number | undefined> {
-  const probe = params?.probe ?? defaultProbe;
+  const probe = params?.probe ?? createSystemHostProcessProbe();
   let pid = params?.startPid ?? process.pid;
   const visited = new Set<number>();
   for (let depth = 0; depth < MAX_ANCESTOR_DEPTH; depth += 1) {

@@ -5,7 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { resolveCurrentClaudeCodeSessionId } from "../src/context-cleaner/current-session.js";
-import { resolveClaudeHostPid, type HostProcessProbe } from "../src/host-process.js";
+import {
+  createSystemHostProcessProbe,
+  resolveClaudeHostPid,
+  type HostProcessProbe,
+} from "../src/host-process.js";
 import { upsertClaudeCodeSessionSnapshot } from "../src/session-state.js";
 
 /**
@@ -51,9 +55,38 @@ test("resolveClaudeHostPid finds the nearest claude ancestor of a descendant", a
   );
 });
 
+test("the system probe reads Windows parent process identity through PowerShell", async () => {
+  const calls: Array<{ command: string; args: readonly string[] }> = [];
+  const probe = createSystemHostProcessProbe({
+    platform: "win32",
+    async run(command, args) {
+      calls.push({ command, args });
+      return {
+        stdout: JSON.stringify([
+          { ProcessId: 54034, ParentProcessId: 38153, Name: "powershell.exe" },
+          { ProcessId: 38153, ParentProcessId: 25333, Name: "claude.exe" },
+        ]),
+      };
+    },
+  });
+
+  assert.deepEqual(await probe.readProcess(54034), {
+    ppid: 38153,
+    command: "powershell.exe",
+  });
+  assert.deepEqual(await probe.readProcess(38153), {
+    ppid: 25333,
+    command: "claude.exe",
+  });
+  assert.equal(calls.length, 1, "one process-table read should serve the complete ancestor walk");
+  assert.equal(calls[0]?.command, "powershell.exe");
+  assert.ok(calls[0]?.args.includes("-NonInteractive"));
+  assert.match(calls[0]?.args.at(-1) ?? "", /Get-CimInstance Win32_Process/u);
+});
+
 test("resolveClaudeHostPid returns undefined for a sibling started from the user's shell", async () => {
-  // This is the Ctrl+Z case: the CLI is a child of 25333, the same shell that
-  // started Claude Code, so walking up never reaches the host.
+  // A CLI started separately is a child of 25333, the same shell that started
+  // Claude Code, so walking up never reaches the host.
   const tree = [{ pid: 60001, ppid: 25333, command: "node" }, ...REAL_TREE];
   assert.equal(
     await resolveClaudeHostPid({ startPid: 60001, probe: probeFrom(tree) }),

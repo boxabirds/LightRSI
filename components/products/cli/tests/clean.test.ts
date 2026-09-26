@@ -334,7 +334,7 @@ test("clean --status addresses a stored plan and needs no session binding", asyn
   }
 });
 
-test("a non-interactive Claude plan carries the suspend-and-select launch command", async () => {
+test("a non-interactive Claude plan carries a portable exit-select-resume command", async () => {
   const claudePlan: CleanPlanView = { ...plan(), hostId: "claude-code", sessionId: "claude-session-7" };
   const calls: string[] = [];
   const result = await handleCleanCommand({
@@ -344,12 +344,14 @@ test("a non-interactive Claude plan carries the suspend-and-select launch comman
     backend: { ...backend(calls), async analyze() { return claudePlan; } },
   });
   assert.match(result.text, /Host\/session: claude-code \/ claude-session-7/);
-  assert.match(result.text, /Suspend Claude Code with Ctrl\+Z/);
+  assert.match(result.text, /run \/exit/);
   assert.match(
     result.text,
     /lightrsi claude-code clean --require-tty --session claude-session-7/,
     "--require-tty has to lead; parseCleanArgs only accepts it first",
   );
+  assert.match(result.text, /claude --resume claude-session-7/);
+  assert.equal(/Ctrl\+Z|\bfg\b/u.test(result.text), false);
   assert.match(result.text, /applied on the next Claude Code request/);
 });
 
