@@ -7,6 +7,14 @@ import { readCliHostPathOverrides, type CliHostPathOverrides } from "../context-
 
 export type CliHostRuntime = {
   handleCommand(ctx: { args: string; sessionId?: string }): Promise<{ text: string }>;
+  /**
+   * The session the user is demonstrably in right now, when the Host offers a
+   * reliable channel for it (Codex exports CODEX_SESSION_ID, for example).
+   * Returns undefined when the Host has no such channel — callers that must not
+   * guess have to refuse rather than fall back to the most recent session.
+   */
+  resolveCurrentSessionId?(): Promise<string | undefined>;
+  /** Current session when known, otherwise the most recently active one. A guess. */
   maybeResolveLatestSessionId(): Promise<string | undefined>;
   resolveSessionId(sessionId?: string): Promise<string | undefined>;
 };

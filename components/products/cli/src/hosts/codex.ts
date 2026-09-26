@@ -94,15 +94,24 @@ async function writeConfig(nextConfig: Record<string, unknown>, pathOverrides?: 
   );
 }
 
-async function maybeResolveLatestSessionId(pathOverrides?: CliHostPathOverrides): Promise<string | undefined> {
+/**
+ * Codex publishes the live session through CODEX_SESSION_ID/CODEX_THREAD_ID, so
+ * the alias index resolves the session the user is actually in. This is a real
+ * binding, not a guess; it is kept separate from the latest-session fallback.
+ */
+async function resolveCurrentSessionId(pathOverrides?: CliHostPathOverrides): Promise<string | undefined> {
   const currentConfig = await loadConfig(pathOverrides);
   const stateDir = resolveCodexStateDir(currentConfig);
   const currentCodexSessionId = process.env.CODEX_SESSION_ID?.trim()
     || process.env.CODEX_THREAD_ID?.trim();
-  if (stateDir && currentCodexSessionId) {
-    const currentSessionId = await resolveCodexSessionAlias(stateDir, currentCodexSessionId);
-    if (currentSessionId) return currentSessionId;
-  }
+  if (!stateDir || !currentCodexSessionId) return undefined;
+  return resolveCodexSessionAlias(stateDir, currentCodexSessionId);
+}
+
+async function maybeResolveLatestSessionId(pathOverrides?: CliHostPathOverrides): Promise<string | undefined> {
+  const current = await resolveCurrentSessionId(pathOverrides);
+  if (current) return current;
+  const currentConfig = await loadConfig(pathOverrides);
   return resolveConfiguredPreferredSessionId({
     async loadConfig() { return currentConfig; },
     resolveStateDir: resolveCodexStateDir,
@@ -159,6 +168,7 @@ export function createCodexCliBridge(target: {
 }): {
   bridge: ProductSurfaceHostBridge;
   configAdapter: ProductSurfaceConfigAdapter;
+  resolveCurrentSessionId(): Promise<string | undefined>;
   maybeResolveLatestSessionId(): Promise<string | undefined>;
   resolveSessionId(sessionId?: string): Promise<string | undefined>;
   handleCommand(ctx: { args: string; sessionId?: string }): Promise<{ text: string }>;
@@ -239,6 +249,9 @@ export function createCodexCliBridge(target: {
   return {
     bridge,
     configAdapter: codexProductSurfaceConfigAdapter,
+    resolveCurrentSessionId() {
+      return resolveCurrentSessionId(target.pathOverrides);
+    },
     maybeResolveLatestSessionId() {
       return maybeResolveLatestSessionId(target.pathOverrides);
     },

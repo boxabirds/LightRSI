@@ -32,6 +32,7 @@ import {
   readRecentClaudeCodeCacheAuditRecordsForSession,
 } from "../../../../adapters/claude-code/src/cache-audit.js";
 import { createClaudeCodeContextCleanerControlService } from "../../../../adapters/claude-code/src/context-cleaner/index.js";
+import { resolveCurrentClaudeCodeSessionId } from "../../../../adapters/claude-code/src/context-cleaner/current-session.js";
 import {
   applyStandardRuntimeModeConfig,
   buildSessionReportResult,
@@ -90,6 +91,24 @@ async function writeConfig(nextConfig: Record<string, unknown>, pathOverrides?: 
   );
 }
 
+/**
+ * Claude Code exposes no environment channel for the live session, but it does
+ * keep the process tree: a command it runs for a skill is a descendant of the
+ * `claude` process that owns the session, and the hook records that pid on the
+ * session snapshot. Resolving both ends binds this invocation to that exact
+ * session rather than to whichever one wrote state most recently.
+ *
+ * Returns undefined when the chain does not hold — notably for a CLI the user
+ * starts from their own shell after suspending Claude Code, which is the host's
+ * sibling rather than its descendant. That path carries an explicit --session.
+ */
+async function resolveCurrentSessionId(pathOverrides?: CliHostPathOverrides): Promise<string | undefined> {
+  const currentConfig = await loadConfig(pathOverrides);
+  const stateDir = resolveClaudeCodeStateDir(currentConfig);
+  if (!stateDir) return undefined;
+  return resolveCurrentClaudeCodeSessionId({ stateDir });
+}
+
 async function maybeResolveLatestSessionId(pathOverrides?: CliHostPathOverrides): Promise<string | undefined> {
   return resolveConfiguredPreferredSessionId({
     loadConfig() {
@@ -124,6 +143,7 @@ export function createClaudeCodeCliBridge(target: {
 }): {
   bridge: ProductSurfaceHostBridge;
   configAdapter: ProductSurfaceConfigAdapter;
+  resolveCurrentSessionId(): Promise<string | undefined>;
   maybeResolveLatestSessionId(): Promise<string | undefined>;
   resolveSessionId(sessionId?: string): Promise<string | undefined>;
   handleCommand(ctx: { args: string; sessionId?: string }): Promise<{ text: string }>;
@@ -199,6 +219,9 @@ export function createClaudeCodeCliBridge(target: {
   return {
     bridge,
     configAdapter: claudeCodeProductSurfaceConfigAdapter,
+    resolveCurrentSessionId() {
+      return resolveCurrentSessionId(target.pathOverrides);
+    },
     maybeResolveLatestSessionId() {
       return maybeResolveLatestSessionId(target.pathOverrides);
     },

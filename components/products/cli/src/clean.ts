@@ -104,6 +104,51 @@ export function cleanSessionIdFromArgs(args: string[]): string | undefined {
   return parsed.action === "analyze" ? parsed.sessionId : undefined;
 }
 
+/**
+ * True when the parsed command analyzes a live session and therefore has to be
+ * bound to one. --plan/--status/--cancel address a stored plan by id instead,
+ * so they never need a session.
+ */
+export function cleanCommandRequiresSessionId(args: string[]): boolean {
+  try {
+    return parseCleanArgs(args).action === "analyze";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Shown instead of silently analyzing whichever session wrote state most
+ * recently. With several Host windows open that guess is wrong as often as it
+ * is right, and cleaning the wrong conversation is not recoverable from the
+ * CLI, so the entry point refuses to choose.
+ */
+export function formatCleanSessionRequired(params: {
+  hostId: string;
+  recentSessionId?: string;
+}): string {
+  const lines = [
+    "Context Cleaner needs an explicit session id.",
+    "",
+    "The entry point has to be bound to the session you are actually in, so it",
+    "never guesses which conversation to clean.",
+    "",
+    `Inside ${params.hostId}, run the Cleaner skill: it prints the plan together`,
+    "with the exact command for that session.",
+    "",
+    "Or pass the session yourself:",
+    `  lightrsi ${params.hostId} clean --session <session-id>`,
+  ];
+  if (params.recentSessionId) {
+    lines.push(
+      "",
+      `Most recently active session on this host: ${params.recentSessionId}`,
+      "Shown for reference only. Confirm it is the session you are in before using it.",
+    );
+  }
+  return lines.join("\n");
+}
+
 function validateSelection(plan: CleanPlanView, selectedTaskIds: string[]): string[] {
   if (selectedTaskIds.length === 0) throw new Error("clean_selection_empty");
   if (new Set(selectedTaskIds).size !== selectedTaskIds.length) throw new Error("clean_selection_duplicate_task");
@@ -125,6 +170,30 @@ async function approveSelection(
   return renderCleanReceipt(await backend.approve(plan.planId, selected));
 }
 
+/**
+ * Claude Code runs a skill's command through its Bash tool, which gets no
+ * pseudo-terminal, so the arrow-key selector cannot open there. The plan is
+ * still worth showing; what the user needs alongside it is the one command
+ * that does reach a real terminal. Suspending Claude Code hands the terminal
+ * back to the shell it was started from without ending the session, and the
+ * session id is carried explicitly so the selector binds to this conversation
+ * rather than whichever one wrote state most recently.
+ *
+ * --require-tty has to lead: parseCleanArgs only accepts it in first position.
+ */
+function interactiveLaunchHint(plan: CleanPlanView): string | undefined {
+  if (plan.hostId !== "claude-code") return undefined;
+  return [
+    "Interactive selection in this same terminal:",
+    "  1. Suspend Claude Code with Ctrl+Z",
+    `  2. Run: lightrsi claude-code clean --require-tty --session ${plan.sessionId}`,
+    "  3. Move with Up/Down, toggle with Space, submit with Enter, cancel with q",
+    "  4. Return to Claude Code with fg",
+    "",
+    "Submitting only schedules the selection; it is applied on the next Claude Code request.",
+  ].join("\n");
+}
+
 function renderNonInteractiveAnalysis(plan: CleanPlanView, rendered: string): string {
   const selectableTasks = plan.tasks.filter((task) => task.selectable);
   const choices = selectableTasks.length === 0
@@ -138,7 +207,9 @@ function renderNonInteractiveAnalysis(plan: CleanPlanView, rendered: string): st
   const nextCommand = selectableTasks.length === 0
     ? ""
     : ` Apply with --plan ${plan.planId} --select <task-id[,task-id...]>`;
-  return `${rendered}\n\n${choices}\n\nAnalysis only (non-interactive).${nextCommand}`;
+  const launch = selectableTasks.length === 0 ? undefined : interactiveLaunchHint(plan);
+  const base = `${rendered}\n\n${choices}\n\nAnalysis only (non-interactive).${nextCommand}`;
+  return launch ? `${base}\n\n${launch}` : base;
 }
 
 export async function handleCleanCommand(params: {

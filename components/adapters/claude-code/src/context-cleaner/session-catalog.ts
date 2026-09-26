@@ -36,6 +36,7 @@ function validSessionState(value: unknown, sessionId: string): value is {
     && optionalString(value.latestModel)
     && optionalString(value.workspaceHint)
     && optionalString(value.lastHookEvent)
+    && optionalCount(value.hostPid)
     && optionalString(value.lastToolName)
     && (value.disclosedReadPaths === undefined
       || (Array.isArray(value.disclosedReadPaths)

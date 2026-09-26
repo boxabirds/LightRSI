@@ -68,6 +68,11 @@ async function writeConfig(nextConfig: Record<string, unknown>): Promise<void> {
   await writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
 }
 
+/** OpenClaw has no environment channel for the live session yet. */
+async function resolveCurrentSessionId(): Promise<string | undefined> {
+  return undefined;
+}
+
 async function maybeResolveLatestSessionId(): Promise<string | undefined> {
   return resolveConfiguredPreferredSessionId({
     loadConfig,
@@ -105,6 +110,7 @@ export function createOpenClawCliBridge(target: {
 }): {
   bridge: ProductSurfaceHostBridge;
   configAdapter: ProductSurfaceConfigAdapter;
+  resolveCurrentSessionId(): Promise<string | undefined>;
   maybeResolveLatestSessionId(): Promise<string | undefined>;
   resolveSessionId(sessionId?: string): Promise<string | undefined>;
 } {
@@ -145,6 +151,7 @@ export function createOpenClawCliBridge(target: {
   return {
     bridge,
     configAdapter: openClawProductSurfaceConfigAdapter,
+    resolveCurrentSessionId,
     maybeResolveLatestSessionId,
     async resolveSessionId(sessionId?: string): Promise<string | undefined> {
       return normalizeSessionId(sessionId);

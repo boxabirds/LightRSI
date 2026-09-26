@@ -244,3 +244,133 @@ test("clean help is available before a Host backend is registered", async () => 
   assert.match(result.text, /clean --status <plan-id>/);
   assert.match(result.text, /clean \[--session <session-id>\]/);
 });
+
+test("Claude clean refuses to guess a session and never reaches the backend", async () => {
+  const home = await mkdtemp(join(tmpdir(), "lightrsi-cli-clean-claude-nosession-"));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalConfigPath = process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+  const configPath = join(home, "tokenpilot.json");
+  const stateDir = join(home, "state");
+  const calls: string[] = [];
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = configPath;
+    await writeFile(configPath, JSON.stringify({ stateDir }), "utf8");
+    registerCleanCommandBackendResolver(() => backend(calls));
+
+    const result = await dispatchCli(["claude-code", "clean"]);
+    assert.deepEqual(calls, [], "the backend must not be reached without a bound session");
+    assert.match(result.text, /needs an explicit session id/);
+    assert.match(result.text, /clean --session <session-id>/);
+  } finally {
+    registerCleanCommandBackendResolver(undefined);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalConfigPath === undefined) delete process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+    else process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = originalConfigPath;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Claude clean analyzes exactly the session named on the command line", async () => {
+  const home = await mkdtemp(join(tmpdir(), "lightrsi-cli-clean-claude-explicit-"));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalConfigPath = process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+  const configPath = join(home, "tokenpilot.json");
+  const stateDir = join(home, "state");
+  const calls: string[] = [];
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = configPath;
+    await writeFile(configPath, JSON.stringify({ stateDir }), "utf8");
+    registerCleanCommandBackendResolver(() => backend(calls));
+
+    await dispatchCli(["claude-code", "clean", "--session", "claude-session-explicit"]);
+    assert.deepEqual(calls, ["analyze:claude-session-explicit"]);
+  } finally {
+    registerCleanCommandBackendResolver(undefined);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalConfigPath === undefined) delete process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+    else process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = originalConfigPath;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("clean --status addresses a stored plan and needs no session binding", async () => {
+  const home = await mkdtemp(join(tmpdir(), "lightrsi-cli-clean-status-nosession-"));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalConfigPath = process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+  const configPath = join(home, "tokenpilot.json");
+  const stateDir = join(home, "state");
+  const calls: string[] = [];
+  try {
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = configPath;
+    await writeFile(configPath, JSON.stringify({ stateDir }), "utf8");
+    registerCleanCommandBackendResolver(() => backend(calls));
+
+    await dispatchCli(["claude-code", "clean", "--status", "plan-1"]);
+    assert.deepEqual(calls, ["receipt:plan-1"]);
+  } finally {
+    registerCleanCommandBackendResolver(undefined);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalConfigPath === undefined) delete process.env.TOKENPILOT_CLAUDE_CODE_CONFIG;
+    else process.env.TOKENPILOT_CLAUDE_CODE_CONFIG = originalConfigPath;
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a non-interactive Claude plan carries the suspend-and-select launch command", async () => {
+  const claudePlan: CleanPlanView = { ...plan(), hostId: "claude-code", sessionId: "claude-session-7" };
+  const calls: string[] = [];
+  const result = await handleCleanCommand({
+    args: [],
+    sessionId: "claude-session-7",
+    interactive: false,
+    backend: { ...backend(calls), async analyze() { return claudePlan; } },
+  });
+  assert.match(result.text, /Host\/session: claude-code \/ claude-session-7/);
+  assert.match(result.text, /Suspend Claude Code with Ctrl\+Z/);
+  assert.match(
+    result.text,
+    /lightrsi claude-code clean --require-tty --session claude-session-7/,
+    "--require-tty has to lead; parseCleanArgs only accepts it first",
+  );
+  assert.match(result.text, /applied on the next Claude Code request/);
+});
+
+test("the launch command the plan prints is a form the parser accepts", async () => {
+  const calls: string[] = [];
+  await assert.rejects(
+    handleCleanCommand({
+      args: ["--require-tty", "--session", "claude-session-7"],
+      backend: backend(calls),
+      interactive: false,
+    }),
+    /clean_interactive_tty_required/,
+    "the command must parse and then fail only on the missing TTY, not on syntax",
+  );
+  assert.deepEqual(calls, [], "a rejected TTY requirement must not reach the backend");
+});
+
+test("a non-Claude host gets no suspend hint", async () => {
+  const calls: string[] = [];
+  const result = await handleCleanCommand({
+    args: [], sessionId: "session-1", interactive: false, backend: backend(calls),
+  });
+  assert.equal(/Ctrl\+Z/.test(result.text), false);
+});

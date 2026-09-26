@@ -44,6 +44,7 @@ const CLI_HOST_REGISTRATIONS: CliHostRegistration[] = CLI_HOSTS.map((host) => ({
       handleCommand(ctx) {
         return handler(ctx);
       },
+      resolveCurrentSessionId: bridge.resolveCurrentSessionId,
       maybeResolveLatestSessionId: bridge.maybeResolveLatestSessionId,
       resolveSessionId(sessionId?: string) {
         return bridge.resolveSessionId(sessionId);
