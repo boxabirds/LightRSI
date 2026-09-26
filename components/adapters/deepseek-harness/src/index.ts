@@ -23,10 +23,12 @@ import type { DshPluginContext } from "./types.js";
 
 export {
   createDshCleanerCapabilities,
+  createDshPersistedCleanerCapabilities,
   type DshCleanerCapabilityParams,
 } from "./context-cleaner/capabilities.js";
 export {
   DSH_PRODUCT_HOST_REGISTRATION,
+  createDshPersistedCleanerControlService,
   resolveDshStateDir,
 } from "./product-registration.js";
 

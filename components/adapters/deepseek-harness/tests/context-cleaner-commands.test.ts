@@ -22,6 +22,7 @@ import {
   readDshCleanerSchedule,
   scheduleDshCleanerPlan,
 } from "../src/context-cleaner/scheduler.js";
+import { readDshCleanerSnapshot } from "../src/context-cleaner/persisted-snapshot.js";
 import { normalizeDshConfig } from "../src/config.js";
 import * as adapterPlugin from "../src/index.js";
 import type {
@@ -244,6 +245,13 @@ describe("Context Cleaner DSH command", () => {
       assert.match(analysis.text ?? "", /\[ \] \| meal-plan \|/u);
       assert.deepEqual(session.surface.nodes, [2, 3], "analysis must not mutate DSH's surface");
 
+      const published = await readDshCleanerSnapshot({ stateDir, sessionId: session.id });
+      assert.equal(published.outcome, "ready", "native analysis publishes the external read-only snapshot");
+      if (published.outcome === "ready") {
+        assert.equal(JSON.stringify(published.snapshot).includes("inexpensive breakfasts"), false,
+          "the published snapshot must not contain source message text");
+      }
+
       const planId = planIdFrom(analysis.text);
       const scheduled = await executeContextCleanerCommand(
         context,
@@ -266,6 +274,72 @@ describe("Context Cleaner DSH command", () => {
         dependencies,
       );
       assert.match(status.text ?? "", /status: scheduled/u);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects duplicate, unknown, and protected selections before a schedule can be written", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-dsh-cleaner-"));
+    try {
+      const context: ContextCleanerCommandContext = { commands: { register: () => () => {} } };
+      const config = configured(stateDir);
+      const dependencies = { now: () => "2026-09-18T00:00:00.000Z" };
+      const session = makeSession("context-cleaner-selection-validation");
+      await persistSessionTaskRegistry(stateDir, completedRegistry(session), { expectedVersion: 0 });
+      const analysis = await executeContextCleanerCommand(context, config, invocation(session, ""), dependencies);
+      const planId = planIdFrom(analysis.text);
+
+      const duplicate = await executeContextCleanerCommand(
+        context,
+        config,
+        invocation(session, `--plan ${planId} --select meal-plan,meal-plan`),
+        dependencies,
+      );
+      assert.equal(duplicate.kind, "error");
+      const unknown = await executeContextCleanerCommand(
+        context,
+        config,
+        invocation(session, `--plan ${planId} --select unknown-task`),
+        dependencies,
+      );
+      assert.equal(unknown.kind, "error");
+      assert.match(unknown.text ?? "", /clean_selection_unknown_task/u);
+      assert.deepEqual(session.surface.nodes, [2, 3]);
+      assert.notEqual((await readDshCleanerSchedule({ stateDir, sessionId: session.id })).outcome, "ready");
+
+      const protectedSession = makeSession("context-cleaner-protected-selection");
+      const initial = completedRegistry(protectedSession);
+      const protectedRegistry = applySessionTaskRegistryPatch(initial, {
+        upsertTasks: {
+          "meal-plan": {
+            ...initial.tasks["meal-plan"]!,
+            lifecycle: "active",
+            completionEvidence: [],
+          },
+        },
+        completedTaskIds: [],
+        evictableTaskIds: ["meal-plan"],
+      });
+      await persistSessionTaskRegistry(stateDir, protectedRegistry, { expectedVersion: 0 });
+      const protectedAnalysis = await executeContextCleanerCommand(
+        context,
+        config,
+        invocation(protectedSession, ""),
+        dependencies,
+      );
+      if (protectedAnalysis.kind !== "success") assert.fail(protectedAnalysis.text);
+      assert.match(protectedAnalysis.text ?? "", /\[-\] \| meal-plan \|/u);
+      const protectedPlanId = planIdFrom(protectedAnalysis.text);
+      const protectedSelection = await executeContextCleanerCommand(
+        context,
+        config,
+        invocation(protectedSession, `--plan ${protectedPlanId} --select meal-plan`),
+        dependencies,
+      );
+      assert.equal(protectedSelection.kind, "error");
+      assert.match(protectedSelection.text ?? "", /clean_selection_task_protected/u);
+      assert.deepEqual(protectedSession.surface.nodes, [2, 3]);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

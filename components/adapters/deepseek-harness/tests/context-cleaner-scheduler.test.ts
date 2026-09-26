@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -23,6 +24,11 @@ function scheduleInput(stateDir: string, cleanPlanId = "ctxclean-one") {
     selectedTaskIds: ["completed-task"],
     scheduledAt,
   };
+}
+
+function persistedSchedulePath(stateDir: string, sessionId: string): string {
+  const digest = createHash("sha256").update(sessionId).digest("hex").slice(0, 32);
+  return join(stateDir, "cleaner-schedule", `${digest}.json`);
 }
 
 describe("DSH Context Cleaner schedule pointer", () => {
@@ -101,6 +107,27 @@ describe("DSH Context Cleaner schedule pointer", () => {
       });
       assert.equal(tooLate.outcome, "conflict");
       assert.deepEqual(tooLate.reasons, ["dsh_cleaner_schedule_claimed_conflict"]);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed for a corrupt persisted pointer instead of replacing it", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-dsh-schedule-"));
+    try {
+      const input = scheduleInput(stateDir);
+      const path = persistedSchedulePath(stateDir, input.sessionId);
+      await mkdir(join(stateDir, "cleaner-schedule"), { recursive: true });
+      await writeFile(path, "{ not-valid-json\n", "utf8");
+
+      const read = await readDshCleanerSchedule({ stateDir, sessionId: input.sessionId });
+      assert.equal(read.outcome, "bypassed");
+      if (read.outcome === "bypassed") assert.deepEqual(read.reasons, ["dsh_cleaner_schedule_malformed"]);
+
+      const schedule = await scheduleDshCleanerPlan(input);
+      assert.equal(schedule.outcome, "bypassed");
+      assert.deepEqual(schedule.reasons, ["dsh_cleaner_schedule_malformed"]);
+      assert.equal(await readFile(path, "utf8"), "{ not-valid-json\n");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
