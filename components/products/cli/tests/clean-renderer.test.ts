@@ -100,6 +100,35 @@ test("clean renderer keeps the plan table and details within the terminal width"
   assert.ok(text.split("\n").every((line) => terminalWidth(line) <= maxWidth));
 });
 
+test("chars-only plans show character shares", () => {
+  const text = renderCleanPlan({
+    planId: "plan-chars",
+    hostId: "openclaw",
+    sessionId: "session-chars",
+    usedTokens: null,
+    usedChars: 400,
+    protectedTokens: null,
+    protectedChars: 0,
+    unassignedTokens: null,
+    unassignedChars: 0,
+    tokenCountMode: "chars_only",
+    tasks: [{
+      taskId: "task-a",
+      label: "Finished work",
+      description: "Finished the requested work",
+      lifecycleState: "completed",
+      tokenCount: null,
+      charCount: 100,
+      tokenPercent: null,
+      recommendation: "clean",
+      reasonCodes: ["completed"],
+      selectable: true,
+    }],
+  });
+
+  assert.match(text, /100 chars\s+25\.0%\s+clean/);
+});
+
 test("receipt renderer distinguishes estimates from applied savings", () => {
   const text = renderCleanReceipt({
     planId: "plan-1",
@@ -135,4 +164,21 @@ test("receipt renderer never represents scheduled estimates as applied savings",
   assert.match(text, /Applied savings: not applied/);
   assert.match(text, /Fallback count: 1/);
   assert.doesNotMatch(text, /Applied savings: 60 tok/);
+});
+
+test("chars-only receipts preserve character units for zero estimates", () => {
+  const text = renderCleanReceipt({
+    planId: "plan-chars",
+    status: "cancelled",
+    tokenCountMode: "chars_only",
+    selectedTaskIds: [],
+    estimatedSavedTokens: 0,
+    estimatedSavedChars: 0,
+    deferredTaskIds: [],
+    reasons: ["cancelled_by_user"],
+    fallbackUsed: true,
+  });
+
+  assert.match(text, /Estimated savings: 0 chars/);
+  assert.doesNotMatch(text, /Estimated savings: 0 tok/);
 });

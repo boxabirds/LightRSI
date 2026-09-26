@@ -23,6 +23,8 @@ const tarCommand = process.platform === "win32"
   ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
   : "tar";
 const extractDir = await mkdtemp(join(tmpdir(), `lightrsi-${host}-release-smoke-`));
+let cleanupCodexCliPath;
+let cleanupEnvironment;
 
 async function assertInstalledBin(binPath, targetPath) {
   const entry = await lstat(binPath);
@@ -79,6 +81,8 @@ try {
     env.CODEX_CONFIG_PATH = hostConfigPath;
     env.CODEX_HOOKS_CONFIG_PATH = auxiliaryConfigPath;
     env.TOKENPILOT_CODEX_CONFIG = join(homeDir, ".codex", "tokenpilot.json");
+    cleanupCodexCliPath = join(distDir, "cli.js");
+    cleanupEnvironment = env;
   } else {
     hostConfigPath = join(homeDir, ".claude", "settings.json");
     auxiliaryConfigPath = join(homeDir, ".claude.json");
@@ -173,5 +177,11 @@ try {
   assert.ok(Object.keys(loaded).length > 0);
   process.stdout.write(`${host} release smoke passed: ${archivePath}\n`);
 } finally {
+  if (cleanupCodexCliPath && cleanupEnvironment) {
+    await execFileAsync(process.execPath, [cleanupCodexCliPath, "stop"], {
+      env: cleanupEnvironment,
+      timeout: 15_000,
+    }).catch(() => undefined);
+  }
   await rm(extractDir, { recursive: true, force: true });
 }

@@ -1,11 +1,26 @@
 #!/usr/bin/env node
-import { installCodexTokenPilot } from "../src/install.js";
+import {
+  installCodexTokenPilot,
+  type CodexInstallResult,
+} from "../src/install.js";
 
-installCodexTokenPilot({
-  codexConfigPath: process.env.CODEX_CONFIG_PATH,
-  tokenPilotConfigPath: process.env.TOKENPILOT_CODEX_CONFIG,
-  hooksConfigPath: process.env.CODEX_HOOKS_CONFIG_PATH,
-}).then((result) => {
+export function formatProxyInstallStatus(
+  daemon: CodexInstallResult["daemon"],
+): string[] {
+  return [
+    `Proxy daemon: ${daemon.running ? "running" : "not running"}`,
+    `Proxy health: ${daemon.running ? "ok" : "failed"}`,
+    `Proxy log: ${daemon.logPath}`,
+    "SessionStart hooks remain installed as an idempotent recovery path.",
+  ];
+}
+
+async function main(): Promise<void> {
+  const result = await installCodexTokenPilot({
+    codexConfigPath: process.env.CODEX_CONFIG_PATH,
+    tokenPilotConfigPath: process.env.TOKENPILOT_CODEX_CONFIG,
+    hooksConfigPath: process.env.CODEX_HOOKS_CONFIG_PATH,
+  });
   console.log(`Installed TokenPilot Codex routing on provider '${result.providerName}'`);
   console.log(`Codex config: ${result.codexConfigPath}`);
   console.log(`TokenPilot config: ${result.tokenPilotConfigPath}`);
@@ -25,16 +40,19 @@ installCodexTokenPilot({
   console.log(`Recovery MCP probe: ${result.mcpProbe.ok ? "ok" : "degraded"}`);
   console.log(`Recovery MCP probe detail: ${result.mcpProbe.detail}`);
   console.log(`Proxy base URL: ${result.baseUrl}`);
-  console.log("TokenPilot will auto-start from Codex SessionStart hooks after hooks are trusted.");
+  for (const line of formatProxyInstallStatus(result.daemon)) console.log(line);
   console.log("Next step: trust the TokenPilot hooks if Codex asks for hook review.");
-  console.log("Next step: start a new Codex session so SessionStart can boot the local proxy.");
   console.log(`Codex default provider remains '${result.providerName}', and TokenPilot forwards upstream to '${result.activeProviderName}'.`);
   console.log("For manual troubleshooting, run: tokenpilot-codex start");
   console.log("If Codex reports hooks need review, run /hooks and trust the TokenPilot hooks.");
   if (result.mcpProbe.degraded) {
     console.log("MCP recovery is currently degraded. Core Codex runtime remains usable, but `memory_fault_recover` may be unavailable until MCP startup succeeds.");
   }
-}).catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+}
+
+if (/install-codex\.(?:js|ts)$/u.test(process.argv[1] ?? "")) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

@@ -35,7 +35,7 @@ test("startDaemon replaces a stale pid when the configured proxy port is unhealt
     const { pidPath, logPath } = daemonPaths(config);
     await writeFile(pidPath, `${dummy.pid}\n`, "utf8");
 
-    const cliPath = join(process.cwd(), "dist", "cli.js");
+    const cliPath = join(__dirname, "..", "dist", "cli.js");
     const result = await startDaemon(config, {
       configPath,
       cliPath,
@@ -95,7 +95,7 @@ test("startDaemon waits for a healthy proxy when the wall clock jumps forward", 
 
     const result = await startDaemon(config, {
       configPath,
-      cliPath: join(process.cwd(), "dist", "cli.js"),
+      cliPath: join(__dirname, "..", "dist", "cli.js"),
     });
 
     assert.equal(result.running, true);

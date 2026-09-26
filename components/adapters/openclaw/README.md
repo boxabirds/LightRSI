@@ -17,7 +17,7 @@ Current adapter responsibilities:
 - request-time reduction
 - tool-result persistence
 - canonical history rewrite and eviction
-- user-approved Context Cleaner snapshot and immediate canonical apply
+- user-approved Context Cleaner snapshot, durable scheduling, and request-time canonical apply
 - recovery protocol and recovery tool wiring
 
 ## Install
@@ -82,13 +82,13 @@ without that surface fall back to an explicitly configured `taskStateEstimator`;
 classification or recommendation failure uses the conservative shared fallback
 and does not make any additional task selectable.
 
-Apply only tasks selected from that immutable plan:
+Schedule only tasks selected from that immutable plan:
 
 ```bash
 lightrsi openclaw clean --plan <plan-id> --select <task-id,...>
 ```
 
-Or apply and inspect the plan from the OpenClaw conversation:
+Or schedule and inspect the plan from the OpenClaw conversation:
 
 ```text
 /lightrsi clean --plan <plan-id> --select <task-id,...>
@@ -99,9 +99,52 @@ Or apply and inspect the plan from the OpenClaw conversation:
 `/tokenpilot clean` and `/tp clean` are equivalent aliases. Active, current,
 and unresolved tasks remain protected by the canonical Cleaner validation.
 
-OpenClaw archives selected task content before atomically committing the
-canonical rewrite. Unlike scheduled Codex and Claude Code rewrites, a successful
-OpenClaw command returns an `applied` receipt immediately.
+Selection returns `scheduled` without changing the canonical transcript. Send the
+next ordinary OpenClaw message to execute the plan, then query `--status` for the
+`applied` receipt and measured savings. OpenClaw archives selected content before
+atomically committing the canonical rewrite. A terminal plan is not executed again.
+
+For the shared arrow-key selector, run this in a real terminal:
+
+```bash
+lightrsi openclaw clean --require-tty --session <session-id>
+```
+
+The complete plan remains above a separate selection area. Up/Down moves, Space
+toggles a selectable task, Enter schedules the selection, and `q` cancels. Selection
+starts empty; protected tasks remain visible and cannot be selected. The native
+slash command uses explicit task IDs and does not take over OpenClaw's keyboard.
+Both entry points share the same plans, schedules, and receipts under `stateDir`.
+Counts remain `chars_only` where no trustworthy task-level token meter exists.
+
+### Runtime and recovery
+
+This version uses the existing shared `prepareScheduledClean`/`recordCleanReceipt`
+API. The OpenClaw control service serializes approve/cancel with runtime execution
+using the same Host session lock; it does not introduce a new shared claim API.
+The capabilities factory accepts Host configuration only, not a shared control plane.
+
+The request execution point is the active TokenPilot Context Engine's `assemble`,
+before canonical synchronization. This is where OpenClaw obtains its effective
+messages; a separate `before_agent_start` callback is not sufficient to protect
+against subsequent assembly. `afterTurn`, `commitTurn`, and `compact` never consume
+a newly scheduled plan. Pending Cleaner work and the request that consumes it
+suppress automatic eviction. TokenPilot must be the active Context Engine for a
+scheduled plan to execute.
+
+An apply intent preserves previous/next revision and real rewrite evidence across
+a restart. If canonical persistence succeeded but receipt persistence did not,
+the next request restores the receipt without another rewrite. Status is read-only;
+cancel reports `openclaw_clean_recovery_required` while an intent needs recovery.
+Corrupt schedules and ambiguous recovery fail closed and preserve the Host input.
+A busy session returns `openclaw_clean_session_busy` to command callers; retry after
+the running operation completes. A live owner's lock is never stolen on a timeout.
+
+For acceptance, use an isolated config/state/workspace with completed A/B and
+protected C. Verify native analysis → CLI selection → native status, and the reverse;
+check `scheduled` before the next message and `applied` afterward. Also verify `q`,
+explicit cancel, protected rejection, repeat status, and a second request without
+duplicate savings. Automated fixtures do not replace a live OpenClaw TTY recording.
 
 Development-style install should use source build + runtime sync instead of mixing release and load-path installs. The current sanity workflow is:
 
