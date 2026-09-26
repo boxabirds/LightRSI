@@ -14,9 +14,14 @@ import { dirname, join } from "node:path";
 
 import type {
   ContextCleanSnapshot,
+  ContextCleanTokenCountMode,
   ContextCleanerSession,
 } from "@lightrsi/cleaner";
-import { MODEL_CONTEXT_REWRITE_SCHEMA_VERSION } from "@lightrsi/host-adapter";
+import {
+  MODEL_CONTEXT_REWRITE_SCHEMA_VERSION,
+  type ContextItemKind,
+  type ContextItemRef,
+} from "@lightrsi/host-adapter";
 
 import { DSH_HOST_ID } from "./snapshot.js";
 
@@ -66,15 +71,54 @@ function snapshotPath(stateDir: string, sessionId: string): string {
   return join(snapshotDirectory(stateDir), snapshotFileName(sessionId));
 }
 
-function validItem(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+const CONTEXT_ITEM_KINDS = new Set<ContextItemKind>([
+  "system", "developer", "user", "assistant", "reasoning",
+  "tool_call", "tool_result", "compaction", "unknown",
+]);
+const TOKEN_COUNT_MODES = new Set<ContextCleanTokenCountMode>([
+  "exact", "estimated", "chars_only",
+]);
+
+function optionalNonBlank(value: unknown): value is string | undefined {
+  return value === undefined || nonBlank(value);
+}
+
+function parseItem(value: unknown): ContextItemRef | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const item = value as Record<string, unknown>;
-  return nonBlank(item.stableId)
-    && nonBlank(item.kind)
-    && nonBlank(item.role)
-    && nonBlank(item.fingerprint)
-    && Number.isSafeInteger(item.chars)
-    && Number(item.chars) >= 0;
+  if (!nonBlank(item.stableId)
+    || !CONTEXT_ITEM_KINDS.has(item.kind as ContextItemKind)
+    || !optionalNonBlank(item.role)
+    || !optionalNonBlank(item.callId)
+    || !optionalNonBlank(item.responseId)
+    || !nonBlank(item.fingerprint)
+    || !Number.isSafeInteger(item.chars)
+    || Number(item.chars) < 0
+    || (item.taskIds !== undefined && (!Array.isArray(item.taskIds)
+      || !item.taskIds.every(nonBlank)
+      || new Set(item.taskIds).size !== item.taskIds.length))) {
+    return undefined;
+  }
+
+  return {
+    stableId: item.stableId,
+    kind: item.kind as ContextItemKind,
+    ...(item.role === undefined ? {} : { role: item.role }),
+    ...(item.callId === undefined ? {} : { callId: item.callId }),
+    ...(item.responseId === undefined ? {} : { responseId: item.responseId }),
+    ...(item.taskIds === undefined ? {} : { taskIds: [...item.taskIds] as string[] }),
+    fingerprint: item.fingerprint,
+    chars: Number(item.chars),
+  };
+}
+
+function parseItemTokenCounts(value: unknown): Record<string, number> | undefined {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.some(([stableId, count]) =>
+    !nonBlank(stableId) || !Number.isSafeInteger(count) || Number(count) < 0)) return undefined;
+  return Object.fromEntries(entries.map(([stableId, count]) => [stableId, Number(count)]));
 }
 
 function parsePersistedSnapshot(value: unknown): DshCleanerPersistedSnapshot | undefined {
@@ -83,6 +127,11 @@ function parsePersistedSnapshot(value: unknown): DshCleanerPersistedSnapshot | u
   const snapshot = record.snapshot;
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return undefined;
   const parsed = snapshot as Record<string, unknown>;
+
+  const items = Array.isArray(parsed.items)
+    ? parsed.items.map(parseItem)
+    : [];
+  const itemTokenCounts = parseItemTokenCounts(parsed.itemTokenCounts);
 
   if (record.schema !== DSH_CLEANER_SNAPSHOT_SCHEMA
     || record.hostId !== DSH_HOST_ID
@@ -95,13 +144,35 @@ function parsePersistedSnapshot(value: unknown): DshCleanerPersistedSnapshot | u
     || parsed.capturedAt !== record.capturedAt
     || parsed.schemaVersion !== MODEL_CONTEXT_REWRITE_SCHEMA_VERSION
     || !Array.isArray(parsed.items)
-    || !parsed.items.every(validItem)
-    || !nonBlank(parsed.tokenCountMode)
-    || !nonBlank(parsed.tokenCountMethod)) {
+    || items.some((item) => item === undefined)
+    || new Set(items.map((item) => item?.stableId)).size !== items.length
+    || !TOKEN_COUNT_MODES.has(parsed.tokenCountMode as ContextCleanTokenCountMode)
+    || !nonBlank(parsed.tokenCountMethod)
+    || !optionalNonBlank(parsed.model)
+    || itemTokenCounts === undefined) {
     return undefined;
   }
 
-  return record as unknown as DshCleanerPersistedSnapshot;
+  const cleanSnapshot: ContextCleanSnapshot = {
+    schemaVersion: MODEL_CONTEXT_REWRITE_SCHEMA_VERSION,
+    hostId: DSH_HOST_ID,
+    sessionId: record.sessionId,
+    revision: record.revision,
+    capturedAt: record.capturedAt,
+    items: items as ContextItemRef[],
+    ...(parsed.model === undefined ? {} : { model: parsed.model }),
+    tokenCountMode: parsed.tokenCountMode as ContextCleanTokenCountMode,
+    tokenCountMethod: parsed.tokenCountMethod,
+    ...(parsed.itemTokenCounts === undefined ? {} : { itemTokenCounts }),
+  };
+  return {
+    schema: DSH_CLEANER_SNAPSHOT_SCHEMA,
+    hostId: DSH_HOST_ID,
+    sessionId: record.sessionId,
+    revision: record.revision,
+    capturedAt: record.capturedAt,
+    snapshot: cleanSnapshot,
+  };
 }
 
 async function writeAtomically(path: string, value: DshCleanerPersistedSnapshot): Promise<void> {
@@ -155,8 +226,9 @@ export async function persistDshCleanerSnapshot(params: {
     capturedAt: snapshot.capturedAt,
     snapshot,
   };
-  if (!parsePersistedSnapshot(record)) throw new Error("dsh_clean_snapshot_write_invalid");
-  await writeAtomically(snapshotPath(stateDir, snapshot.sessionId), record);
+  const parsed = parsePersistedSnapshot(record);
+  if (!parsed) throw new Error("dsh_clean_snapshot_write_invalid");
+  await writeAtomically(snapshotPath(stateDir, snapshot.sessionId), parsed);
 }
 
 /** Read one trusted snapshot without accessing DSH's live SessionStore. */

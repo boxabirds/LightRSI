@@ -52,6 +52,18 @@ function payload(): DshPreStepPayload {
 const CONFIG = normalizeDshConfig({ enabled: true, eviction: { enabled: true } });
 
 describe("pre-step listener order (§1.3: eviction before compaction)", () => {
+  it("keeps a Cleaner claim for every pre-step in that agent turn only", () => {
+    const state = createDshCleanerPreStepState();
+    const first = payload();
+    state.markClaimed(first);
+
+    assert.equal(state.wasClaimed(first), true);
+    assert.equal(state.wasClaimed({ ...first, step: first.step + 1 }), true,
+      "a later model step in the same request must stay mutually exclusive");
+    assert.equal(state.wasClaimed({ ...first, turn: first.turn + 1, step: 0 }), false,
+      "a later request must allow automatic eviction again");
+  });
+
   it("places Cleaner before automatic eviction and native compaction", () => {
     const { ctx, handlers } = mockWaterfall();
     const compaction: Handler = async (_p, next) => next();

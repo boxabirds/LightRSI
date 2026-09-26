@@ -89,14 +89,28 @@ async function main(): Promise<void> {
     const config = normalizeDshConfig({
       enabled: true,
       stateDir: stateRoot,
-      // The real automatic handler is installed below, but lifecycle model
-      // estimation remains off: this check seeds its A/B/C durable registry
-      // and must not need an external credential to prove Cleaner ordering.
-      taskStateEstimator: { enabled: false },
-      eviction: { enabled: false },
+      // The injected registry fails before the estimator can make a request.
+      // Keeping both features enabled proves the request-local Cleaner claim,
+      // rather than a disabled feature flag, suppresses automatic eviction.
+      taskStateEstimator: {
+        enabled: true,
+        baseUrl: "http://127.0.0.1:9",
+        apiKey: "gx02-no-network",
+        model: "gx02-no-network",
+      },
+      eviction: { enabled: true },
     });
     const state = createDshCleanerPreStepState();
-    registerEvictionPreStep(ctx, config, undefined, {
+    let automaticEvictionRegistryReads = 0;
+    registerEvictionPreStep(ctx, config, {
+      async load() {
+        automaticEvictionRegistryReads += 1;
+        throw new Error("gx02_automatic_eviction_probe");
+      },
+      async persist() {
+        throw new Error("gx02_automatic_eviction_probe_persist_unexpected");
+      },
+    }, {
       shouldSkipAutomaticEviction: (payload) => state.wasClaimed(payload),
     });
     registerDshCleanerPreStep(ctx, config, state);
@@ -272,6 +286,9 @@ async function main(): Promise<void> {
     assert.equal(agent.session.surface.nodes.includes(keepActive.user), true, "active KEEP_ME task was removed");
     assert.equal(agent.session.surface.nodes.includes(keepActive.assistant), true, "active KEEP_ME task was removed");
     assert.equal(unexpectedAutomaticPasses, 0, "automatic eviction was not suppressed after Cleaner claimed this pre-step");
+    assert.equal(automaticEvictionRegistryReads, 0,
+      "automatic eviction reached its registry during the Cleaner-owned request");
+    const automaticEvictionRegistryReadsDuringCleanerRequest = automaticEvictionRegistryReads;
 
     const appliedStatus = await executeContextCleanerCommand(commandContext, config, invoke(`--status ${planId}`));
     assertSuccess(appliedStatus, "applied status");
@@ -296,6 +313,8 @@ async function main(): Promise<void> {
     }));
     await agent.whenIdle();
     assert.equal(cleanReplacements(), replacementsAfterApply, "terminal Cleaner plan replayed on a later agent request");
+    assert.ok(automaticEvictionRegistryReads > automaticEvictionRegistryReadsDuringCleanerRequest,
+      "automatic eviction did not resume after the Cleaner request became terminal");
 
     evidence = {
       status: "pass",
@@ -311,6 +330,8 @@ async function main(): Promise<void> {
       replacedSourceEventSeqs: [evict.user, evict.assistant],
       retainedSourceEventSeqs: [keepCompleted.user, keepCompleted.assistant, keepActive.user, keepActive.assistant],
       automaticEvictionPassesDuringCleanerRequest: unexpectedAutomaticPasses,
+      automaticEvictionRegistryReadsDuringCleanerRequest,
+      automaticEvictionRegistryReadsAfterLaterRequest: automaticEvictionRegistryReads,
       replayReplacementCount: replacementsAfterApply,
       cleanup: "temporary state root removed after verification",
     };

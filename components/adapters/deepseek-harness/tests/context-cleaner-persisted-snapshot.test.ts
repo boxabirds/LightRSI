@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -169,6 +169,60 @@ describe("DSH Context Cleaner persisted snapshots", () => {
         /dsh_clean_snapshot_unavailable:dsh_clean_snapshot_missing_or_invalid/u,
       );
       assert.deepEqual(await capabilities.sessionCatalog.listSessions(), []);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed item metadata at the trusted persistence boundary", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-dsh-persisted-"));
+    try {
+      const session = makeSession("malformed-item-session");
+      const { snapshot } = buildDshCleanSnapshot({
+        session,
+        registry: completedRegistry(session),
+        revision: surfaceRevision(session),
+        capturedAt,
+      });
+      snapshot.items[0]!.taskIds = "task-a" as never;
+
+      await assert.rejects(
+        persistDshCleanerSnapshot({ stateDir, snapshot }),
+        /dsh_clean_snapshot_write_invalid/u,
+      );
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists and returns only the declared metadata fields", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lightrsi-dsh-persisted-"));
+    try {
+      const session = makeSession("sanitized-metadata-session");
+      const { snapshot } = buildDshCleanSnapshot({
+        session,
+        registry: completedRegistry(session),
+        revision: surfaceRevision(session),
+        capturedAt,
+      });
+      const sentinel = "DO_NOT_PERSIST_UNKNOWN_DSH_PAYLOAD";
+      (snapshot as unknown as Record<string, unknown>).adapterMetadata = { rawText: sentinel };
+      (snapshot.items[0] as unknown as Record<string, unknown>).rawText = sentinel;
+
+      await persistDshCleanerSnapshot({ stateDir, snapshot });
+      const files = await readdir(join(stateDir, "cleaner-snapshot"));
+      assert.equal(files.length, 1);
+      const raw = await readFile(join(stateDir, "cleaner-snapshot", files[0]!), "utf8");
+      assert.equal(raw.includes(sentinel), false, "unknown payload reached the persisted metadata boundary");
+
+      const stored = await readDshCleanerSnapshot({
+        stateDir,
+        sessionId: session.id,
+        maxAgeMs: 60_000,
+        now: clock,
+      });
+      assert.equal(stored.outcome, "ready");
+      assert.equal(JSON.stringify(stored).includes(sentinel), false);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

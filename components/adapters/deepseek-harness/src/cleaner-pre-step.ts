@@ -2,8 +2,9 @@
  * Context Cleaner request-lifecycle orchestration for DeepSeek Harness.
  *
  * This runs before automatic eviction and native compaction. A successful
- * Cleaner claim marks the current pre-step so automatic eviction can skip the
- * same surface; both systems therefore never rewrite the same request twice.
+ * Cleaner claim marks the current agent turn so automatic eviction can skip
+ * every later step in the same request; both systems therefore never rewrite
+ * the same request twice.
  */
 
 import { loadSessionTaskRegistry } from "@lightrsi/history";
@@ -36,17 +37,19 @@ import type { DshPluginContext, DshPreStepPayload } from "./types.js";
 
 const CLAIM_RECOVERY_AFTER_MS = 30_000;
 
-/** Request-local signal shared with the automatic eviction handler. */
+/** Agent-turn-local signal shared with the automatic eviction handler. */
 export type DshCleanerPreStepState = {
   markClaimed(payload: DshPreStepPayload): void;
   wasClaimed(payload: DshPreStepPayload): boolean;
 };
 
 export function createDshCleanerPreStepState(): DshCleanerPreStepState {
-  const claimed = new WeakSet<object>();
+  const claimedTurnByAgent = new WeakMap<object, string>();
+  const turnKey = (payload: DshPreStepPayload) =>
+    `${payload.agent.session.id}\u0000${payload.turn}`;
   return {
-    markClaimed(payload) { claimed.add(payload); },
-    wasClaimed(payload) { return claimed.has(payload); },
+    markClaimed(payload) { claimedTurnByAgent.set(payload.agent, turnKey(payload)); },
+    wasClaimed(payload) { return claimedTurnByAgent.get(payload.agent) === turnKey(payload); },
   };
 }
 
