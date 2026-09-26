@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   CONTEXT_CLEAN_SCHEMA_VERSION,
+  contextCleanReceiptFilePath,
   createContextCleanerControlPlane,
   createContextCleanerControlService,
   readContextCleanReceipt,
@@ -251,15 +252,19 @@ test("RY-01 the forwarded request drops only the selected task and keeps the res
 
     assert.equal(prepared.outcome, "prepared", JSON.stringify(prepared));
     if (prepared.outcome !== "prepared") return;
-    assert.equal(prepared.suppressAutomaticEviction, true);
+    try {
+      assert.equal(prepared.suppressAutomaticEviction, true);
 
-    const forwarded = overlayText(prepared.request);
-    assert.equal(forwarded.includes("EVICT_ME_A"), false, "selected task A must be gone");
-    assert.equal(forwarded.includes("EVICT_ME_B"), true, "unselected task B must survive");
-    assert.equal(forwarded.includes("KEEP_ME_C"), true, "protected task C must survive");
-    assert.equal(forwarded.includes("CURRENT_REQUEST"), true, "the current turn must survive");
-    assert.equal(prepared.request.messages.length, seeded.messages.length);
-    assert.deepEqual(prepared.rewriteResult.removedItemIds, [seeded.itemIdFor("task-a")]);
+      const forwarded = overlayText(prepared.request);
+      assert.equal(forwarded.includes("EVICT_ME_A"), false, "selected task A must be gone");
+      assert.equal(forwarded.includes("EVICT_ME_B"), true, "unselected task B must survive");
+      assert.equal(forwarded.includes("KEEP_ME_C"), true, "protected task C must survive");
+      assert.equal(forwarded.includes("CURRENT_REQUEST"), true, "the current turn must survive");
+      assert.equal(prepared.request.messages.length, seeded.messages.length);
+      assert.deepEqual(prepared.rewriteResult.removedItemIds, [seeded.itemIdFor("task-a")]);
+    } finally {
+      await abandonClaudeCleanerOverlay(prepared);
+    }
   });
 });
 
@@ -281,15 +286,19 @@ test("RY-01 selecting A and B drops both while the protected task and current tu
 
     assert.equal(prepared.outcome, "prepared", JSON.stringify(prepared));
     if (prepared.outcome !== "prepared") return;
-    const forwarded = overlayText(prepared.request);
-    assert.equal(forwarded.includes("EVICT_ME_A"), false);
-    assert.equal(forwarded.includes("EVICT_ME_B"), false);
-    assert.equal(forwarded.includes("KEEP_ME_C"), true);
-    assert.equal(forwarded.includes("CURRENT_REQUEST"), true);
-    assert.deepEqual(
-      [...prepared.rewriteResult.removedItemIds].sort(),
-      [seeded.itemIdFor("task-a"), seeded.itemIdFor("task-b")].sort(),
-    );
+    try {
+      const forwarded = overlayText(prepared.request);
+      assert.equal(forwarded.includes("EVICT_ME_A"), false);
+      assert.equal(forwarded.includes("EVICT_ME_B"), false);
+      assert.equal(forwarded.includes("KEEP_ME_C"), true);
+      assert.equal(forwarded.includes("CURRENT_REQUEST"), true);
+      assert.deepEqual(
+        [...prepared.rewriteResult.removedItemIds].sort(),
+        [seeded.itemIdFor("task-a"), seeded.itemIdFor("task-b")].sort(),
+      );
+    } finally {
+      await abandonClaudeCleanerOverlay(prepared);
+    }
   });
 });
 
@@ -404,10 +413,10 @@ test("RY-01 a drifted revision with rewritten history lands on stale, not applie
       now: NOW,
     });
 
-    assert.notEqual(result.outcome, "prepared", JSON.stringify(result));
+    assert.equal(result.outcome, "terminal", JSON.stringify(result));
     assert.equal(result.suppressAutomaticEviction, true);
     const receipt = await readContextCleanReceipt({ stateDir, planId: PLAN });
-    assert.notEqual(receipt.value?.status, "applied");
+    assert.equal(receipt.value?.status, "stale");
     assert.equal("appliedSavedChars" in (receipt.value ?? {}), false);
   });
 });
@@ -429,9 +438,9 @@ test("RY-01 a target that is no longer evictable lands on stale without rewritin
       now: NOW,
     });
 
-    assert.notEqual(result.outcome, "prepared", JSON.stringify(result));
+    assert.equal(result.outcome, "terminal", JSON.stringify(result));
     const receipt = await readContextCleanReceipt({ stateDir, planId: PLAN });
-    assert.notEqual(receipt.value?.status, "applied");
+    assert.equal(receipt.value?.status, "stale");
   });
 });
 
@@ -525,10 +534,10 @@ test("RY-01 an archive write failure lands on a terminal status and never report
       now: NOW,
     });
 
-    assert.notEqual(result.outcome, "prepared", JSON.stringify(result));
+    assert.equal(result.outcome, "terminal", JSON.stringify(result));
     assert.equal(result.suppressAutomaticEviction, true);
     const stored = await readContextCleanReceipt({ stateDir, planId: PLAN });
-    assert.notEqual(stored.value?.status, "applied");
+    assert.equal(stored.value?.status, "failed");
     assert.equal("appliedSavedChars" in (stored.value ?? {}), false);
     assert.equal(
       stored.value?.reasons.includes("claude_cleaner_archive_incomplete"),
@@ -538,7 +547,7 @@ test("RY-01 an archive write failure lands on a terminal status and never report
   });
 });
 
-test("RY-01 a receipt write that loses the race reserves instead of claiming applied", async () => {
+test("RY-01 a concurrent cancellation reserves instead of claiming applied", async () => {
   await withTempState(async (stateDir) => {
     const seeded = buildSession();
     await scheduleSelection(stateDir, seeded, ["task-a"]);
@@ -579,6 +588,48 @@ test("RY-01 a receipt write that loses the race reserves instead of claiming app
     const receipt = await readContextCleanReceipt({ stateDir, planId: PLAN });
     assert.equal(receipt.value?.status, "cancelled");
     assert.equal("appliedSavedChars" in (receipt.value ?? {}), false);
+  });
+});
+
+test("RY-01 a receipt persistence failure reserves without claiming applied", async () => {
+  await withTempState(async (stateDir) => {
+    const seeded = buildSession();
+    await scheduleSelection(stateDir, seeded, ["task-a"]);
+
+    const prepared = await prepareClaudeCleanerOverlay({
+      stateDir,
+      sessionId: SESSION,
+      baseSnapshot: seeded.snapshot,
+      currentSnapshot: seeded.snapshot,
+      request: { sessionId: SESSION, revision: REVISION, messages: seeded.messages },
+      activeTaskIds: ["task-c"],
+      evictableTaskIds: ["task-a", "task-b"],
+      now: NOW,
+    });
+    assert.equal(prepared.outcome, "prepared");
+    if (prepared.outcome !== "prepared") return;
+
+    // Replace the real receipt JSON with a directory. The shared store can
+    // still acquire its independent plan lock, but it cannot read or replace
+    // the receipt path during finalization.
+    const receiptPath = contextCleanReceiptFilePath(stateDir, PLAN);
+    await rm(receiptPath, { force: true });
+    await mkdir(receiptPath);
+
+    const finalized = await finalizeClaudeCleanerOverlay({
+      stateDir,
+      prepared,
+      now: "2026-09-26T00:00:04.000Z",
+    });
+
+    assert.equal(finalized.outcome, "reserved", JSON.stringify(finalized));
+    assert.equal(finalized.reasonCodes.includes("claude_cleaner_applied_receipt_write_failed"), true);
+    assert.equal(finalized.reasonCodes.includes("clean_transaction_receipt_unavailable"), true);
+    assert.equal(
+      (await readClaudeCleanerSchedule({ stateDir, sessionId: SESSION })).outcome,
+      "ready",
+      "a failed shared receipt write must not claim the local schedule as applied",
+    );
   });
 });
 
@@ -712,9 +763,12 @@ test("RY-01 the schedule pointer survives a restart and the plan is still execut
     });
     assert.equal(prepared.outcome, "prepared", JSON.stringify(prepared));
     if (prepared.outcome !== "prepared") return;
-
-    const forwarded = overlayText(prepared.request);
-    assert.equal(forwarded.includes("EVICT_ME_B"), false);
-    assert.equal(forwarded.includes("EVICT_ME_A"), true, "an unselected task survives a restart too");
+    try {
+      const forwarded = overlayText(prepared.request);
+      assert.equal(forwarded.includes("EVICT_ME_B"), false);
+      assert.equal(forwarded.includes("EVICT_ME_A"), true, "an unselected task survives a restart too");
+    } finally {
+      await abandonClaudeCleanerOverlay(prepared);
+    }
   });
 });
