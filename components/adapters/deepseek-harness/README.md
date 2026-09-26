@@ -116,7 +116,7 @@ corepack pnpm --dir .\components\adapters\deepseek-harness typecheck
 corepack pnpm --dir .\components\adapters\deepseek-harness test
 ```
 
-Current branch validation: `typecheck` passed and `test` passed (103 tests,
+Current branch validation: `typecheck` passed and `test` passed (107 tests,
 including persisted-snapshot restart, freshness, no-raw-text, protected/unknown
 selection rejection, and schedule-without-surface-mutation coverage).
 
@@ -133,3 +133,26 @@ revision:
 ```powershell
 corepack pnpm --dir .\components\adapters\deepseek-harness compatibility:smoke -- --dsh-checkout="C:\path\to\deepseek-harness"
 ```
+
+### GX-02 real DSH-session verification
+
+The unit suite intentionally uses small structural session fixtures for fault
+injection. For GX-02 acceptance, also run the following command against the
+pinned DSH checkout:
+
+```powershell
+corepack pnpm --dir .\components\adapters\deepseek-harness gx02:real-session -- --dsh-checkout="C:\path\to\deepseek-harness"
+```
+
+It starts an isolated, **real DSH Cordis runtime** with its real `SessionStore`,
+`AgentLoop`, `TokenMeter`, and `agent/pre-step` waterfall. It persists A/B
+completed and C active task state, verifies that analysis and selection leave
+the canonical surface revision unchanged, then sends one ordinary agent request
+to perform the selected A cleanup. The JSON evidence records the before/after
+revision, replaced and retained source-event IDs, the applied receipt, and the
+terminal replay guard; its temporary state directory is always removed.
+
+The model adapter in this verifier is DSH's deterministic local keyless mock.
+That avoids API keys and network calls; it is **not** presented as evidence of
+an external production model. The separate compatibility smoke remains the
+profile install/remove and Web-startup check.
