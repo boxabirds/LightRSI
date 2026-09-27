@@ -3,12 +3,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BUILD_CMD=(npm run build)
+REPO_DIR="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
+CLI_DIR="${REPO_DIR}/components/products/cli"
+PLUGIN_BUILD_CMD=(npm run build)
+CLI_BUILD_CMD=(npm run build)
 if command -v node.exe >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; then
   # A repository mounted into WSL may have dependencies installed by Windows.
   # Use the matching Windows Node toolchain without depending on a globally
   # selected pnpm version; this package's build has no workspace orchestration.
-  BUILD_CMD=(cmd.exe /d /c npm run build)
+  # Git Bash otherwise rewrites /d and /c into drive-like paths. Disabling
+  # MSYS argument conversion is harmless in WSL and keeps cmd flags intact.
+  PLUGIN_BUILD_CMD=(env 'MSYS2_ARG_CONV_EXCL=*' cmd.exe /d /c npm run build)
+  CLI_BUILD_CMD=(env 'MSYS2_ARG_CONV_EXCL=*' cmd.exe /d /c npm run build)
 fi
 
 cd "${PLUGIN_DIR}"
@@ -17,7 +23,8 @@ rm -f lightrsi-openclaw-adapter-*.tgz lightrsi-tokenpilot-openclaw-*.tgz tokenpi
 # install_release.sh captures stdout from this script as the archive path.
 # Keep build diagnostics visible on stderr while reserving stdout for the
 # final .tgz path printed below.
-"${BUILD_CMD[@]}" >&2
+"${PLUGIN_BUILD_CMD[@]}" >&2
+(cd "${CLI_DIR}" && "${CLI_BUILD_CMD[@]}") >&2
 
 PACK_TMP_DIR="$(mktemp -d "${PLUGIN_DIR}/.tokenpilot-pack-XXXXXX")"
 cleanup() {
@@ -41,27 +48,29 @@ fi
 
 mkdir -p "${PACK_TMP_DIR}/package"
 cp -R dist "${PACK_TMP_DIR}/package/dist"
+cp "${CLI_DIR}/dist/cli.js" "${PACK_TMP_DIR}/package/dist/cli.js"
+if [[ -f "${CLI_DIR}/dist/cli.js.map" ]]; then
+  cp "${CLI_DIR}/dist/cli.js.map" "${PACK_TMP_DIR}/package/dist/cli.js.map"
+fi
 cp README.md "${PACK_TMP_DIR}/package/README.md"
 cp openclaw.plugin.json "${PACK_TMP_DIR}/package/openclaw.plugin.json"
 
-python3 - "${PLUGIN_DIR}/package.json" "${PACK_TMP_DIR}/package/package.json" <<'PY'
-import json
-import sys
-from pathlib import Path
+node - "${PLUGIN_DIR}/package.json" "${PACK_TMP_DIR}/package/package.json" <<'JS'
+const fs = require("node:fs");
 
-src = Path(sys.argv[1])
-dst = Path(sys.argv[2])
-pkg = json.loads(src.read_text(encoding="utf-8"))
+const [src, dst] = process.argv.slice(2);
+const pkg = JSON.parse(fs.readFileSync(src, "utf8"));
 
-# Release tarball is fully bundled in dist/index.js. Workspace deps make
-# OpenClaw try to npm install inside the extracted plugin directory, which
-# fails outside the monorepo. Strip runtime/dev deps for the packed artifact.
-pkg.pop("dependencies", None)
-pkg.pop("devDependencies", None)
-pkg.pop("scripts", None)
+// Release tarball is fully bundled. Workspace deps make OpenClaw try to npm
+// install inside the extracted plugin directory, which fails outside the
+// monorepo. Strip runtime/dev deps for the packed artifact.
+delete pkg.dependencies;
+delete pkg.devDependencies;
+delete pkg.scripts;
+pkg.bin = { lightrsi: "dist/cli.js", lightmem2: "dist/cli.js" };
 
-dst.write_text(json.dumps(pkg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-PY
+fs.writeFileSync(dst, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
+JS
 
 archive_name="$(cd "${PACK_TMP_DIR}/package" && npm_config_cache="${NPM_CACHE_DIR}" npm pack --silent)"
 archive_path="${PACK_TMP_DIR}/package/${archive_name}"

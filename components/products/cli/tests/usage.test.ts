@@ -9,4 +9,5 @@ test("usage mentions top-level and host-scoped commands", () => {
   assert.match(text, /use <host>/);
   assert.match(text, /openclaw/);
   assert.match(text, /codex/);
+  assert.match(text, /clean --require-tty --session <session-id>/);
 });

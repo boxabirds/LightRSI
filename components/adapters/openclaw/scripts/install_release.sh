@@ -395,6 +395,26 @@ with open(config_path, "w", encoding="utf-8") as f:
 PY
 }
 
+install_bundled_cli() {
+  local cli_source="${INSTALLED_PLUGIN_PATH}/dist/cli.js"
+  local bin_dir="${LIGHTRSI_BIN_DIR:-${LIGHTMEM2_BIN_DIR:-${HOME}/.local/bin}}"
+  local target="${bin_dir}/lightrsi"
+  local legacy_target="${bin_dir}/lightmem2"
+
+  if [[ ! -f "${cli_source}" ]]; then
+    printf '%s\n' "Bundled lightrsi CLI not found at ${cli_source}" >&2
+    return 1
+  fi
+  mkdir -p "${bin_dir}"
+  chmod +x "${cli_source}"
+  ln -sf "${cli_source}" "${target}"
+  ln -sf "${cli_source}" "${legacy_target}"
+  printf 'Installed lightrsi CLI -> %s\n' "${target}"
+  if [[ ":${PATH}:" != *":${bin_dir}:"* ]]; then
+    printf 'Add %s to PATH before using lightrsi.\n' "${bin_dir}"
+  fi
+}
+
 sanitize_plugin_config 0
 
 archive_path="$("${SCRIPT_DIR}/pack_release.sh")"
@@ -406,6 +426,7 @@ fi
 prepare_config_for_install
 openclaw_cmd plugins install "${archive_path}" --force --accept-capabilities
 sanitize_plugin_config 1
+install_bundled_cli
 if ! openclaw_cmd gateway restart; then
   printf '%s\n' "Warning: gateway restart failed; restart it manually if needed."
 fi

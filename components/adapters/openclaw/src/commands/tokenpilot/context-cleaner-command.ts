@@ -59,6 +59,21 @@ export function formatOpenClawCleanUsage(): string {
     "  /lightrsi clean --cancel <plan-id>",
     "The first command only analyzes. Cleaning requires an explicit task selection.",
     "Selection schedules cleaning for the next ordinary OpenClaw request.",
+    "Arrow-key selection runs in a terminal:",
+    "  lightrsi openclaw clean --require-tty --session <session-id>",
+  ].join("\n");
+}
+
+function formatOpenClawInteractiveLaunch(plan: ContextCleanPlan): string | undefined {
+  if (!plan.tasks.some((task) => task.selectable)) return undefined;
+  return [
+    "Interactive selection in this terminal:",
+    "  1. Return to the shell that launched OpenClaw",
+    `  2. Run: lightrsi openclaw clean --require-tty --session ${plan.sessionId}`,
+    "  3. Move with Up/Down, toggle with Space, submit with Enter, cancel with q",
+    "  4. Return to OpenClaw; a submitted plan runs on the next ordinary request",
+    "",
+    "The explicit session id binds the selector to this conversation; no recent-session guess is used.",
   ].join("\n");
 }
 
@@ -209,7 +224,10 @@ export async function handleOpenClawContextCleanCommand(params: {
     ?? resolveSessionIdFromCommandScope(params.backend.stateDir, params.ctx, params.ctx?.commandBody)
     ?? directSessionId(params.ctx);
   if (!sessionId) throw new Error("clean_session_missing; use --session <session-id>");
-  return { text: renderOpenClawCleanPlan(await params.backend.analyze(sessionId)) };
+  const plan = await params.backend.analyze(sessionId);
+  const rendered = renderOpenClawCleanPlan(plan);
+  const interactiveLaunch = formatOpenClawInteractiveLaunch(plan);
+  return { text: interactiveLaunch ? `${rendered}\n\n${interactiveLaunch}` : rendered };
 }
 
 export function createOpenClawContextCleanerCommandHandler(params: {

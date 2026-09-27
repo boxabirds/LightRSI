@@ -57,6 +57,7 @@ export function formatCleanUsage(): string {
   return [
     "Usage:",
     "  lightrsi <host> clean [--session <session-id>]",
+    "  lightrsi <host> clean --require-tty --session <session-id>",
     "  lightrsi <host> clean --plan <plan-id> --select <task-id[,task-id...]>",
     "  lightrsi <host> clean --status <plan-id>",
     "  lightrsi <host> clean --cancel <plan-id>",

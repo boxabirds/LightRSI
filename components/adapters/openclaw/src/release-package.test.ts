@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -12,6 +13,25 @@ const packageDir = resolve(__dirname, "..");
 const tarCommand = process.platform === "win32"
   ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
   : "tar";
+
+function resolveBashCommand(): string {
+  const configured = process.env.LIGHTRSI_TEST_BASH?.trim();
+  if (configured) return configured;
+  if (process.platform !== "win32") return "bash";
+  try {
+    const gitPath = execFileSync("where.exe", ["git"], { encoding: "utf8" })
+      .split(/\r?\n/)
+      .map((candidate) => candidate.trim())
+      .find(Boolean);
+    if (gitPath) {
+      const gitBash = join(dirname(dirname(gitPath)), "bin", "bash.exe");
+      if (existsSync(gitBash)) return gitBash;
+    }
+  } catch {
+    // The fallback below preserves the existing behavior on systems without Git Bash.
+  }
+  return "bash";
+}
 
 test("release installer uses OpenClaw managed installation for capability consent", async () => {
   const script = await readFile(join(packageDir, "scripts", "install_release.sh"), "utf8");
@@ -22,6 +42,9 @@ test("release installer uses OpenClaw managed installation for capability consen
   assert.doesNotMatch(script, /tar -xzf "\$\{archive_path\}"/);
   assert.match(script, /tokenpilot_cfg\["proxyAutostart"\] = False/);
   assert.match(script, /slots\["contextEngine"\] = "tokenpilot"/);
+  assert.match(script, /install_bundled_cli/);
+  assert.match(script, /INSTALLED_PLUGIN_PATH\}\/dist\/cli\.js/);
+  assert.match(script, /ln -sf "\$\{cli_source\}" "\$\{target\}"/);
 });
 
 test("release package loads without monorepo workspace dependencies", async () => {
@@ -29,7 +52,7 @@ test("release package loads without monorepo workspace dependencies", async () =
   let archivePath = "";
 
   try {
-    const result = await execFileAsync("bash", ["scripts/pack_release.sh"], {
+    const result = await execFileAsync(resolveBashCommand(), ["scripts/pack_release.sh"], {
       cwd: packageDir,
       env: {
         ...process.env,
@@ -45,6 +68,10 @@ test("release package loads without monorepo workspace dependencies", async () =
     assert.equal(manifest.name, "@lightrsi/openclaw-adapter");
     assert.equal(manifest.dependencies, undefined);
     assert.equal(manifest.devDependencies, undefined);
+    assert.deepEqual(manifest.bin, {
+      lightrsi: "dist/cli.js",
+      lightmem2: "dist/cli.js",
+    });
     const pluginManifest = JSON.parse(
       await readFile(join(installedDir, "openclaw.plugin.json"), "utf8"),
     );
@@ -55,6 +82,12 @@ test("release package loads without monorepo workspace dependencies", async () =
     assert.equal(plugin.id, "tokenpilot");
     assert.equal(plugin.kind, "context-engine");
     assert.equal(typeof plugin.register, "function");
+
+    const cliPath = join(installedDir, "dist", "cli.js");
+    const cliSource = await readFile(cliPath, "utf8");
+    assert.match(cliSource, /^#!\/usr\/bin\/env node/);
+    const cliHelp = await execFileAsync(process.execPath, [cliPath, "--help"]);
+    assert.match(cliHelp.stdout, /lightrsi openclaw clean --require-tty --session/);
 
     const hooks = plugin.__testHooks;
     const tools = [
