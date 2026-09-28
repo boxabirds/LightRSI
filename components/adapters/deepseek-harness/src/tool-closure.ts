@@ -9,21 +9,22 @@
  * This mirrors the pairing scheme the shared fixture oracle uses
  * (tests/session-event-fixtures.test.ts): tool/call → data.callId; tool/result
  * → message.source.callId (fallback: the tool-result block's toolCallId).
+ *
+ * Pair classification is the shared canonical-surface closure in
+ * `@lightrsi/eviction`; only DSH event parsing lives here.
  */
 
-export type ToolPairStatus =
-  | "closed"
-  | "orphan_result"
-  | "missing_result"
-  | "duplicate_call"
-  | "duplicate_result";
+import {
+  assembleToolPairs,
+  classifyToolPair,
+  isEvictableToolPair,
+  type ToolPair as SharedToolPair,
+  type ToolPairStatus as SharedToolPairStatus,
+} from "@lightrsi/eviction";
 
-export interface ToolPair {
-  callId: string;
-  callSeqs: number[];
-  resultSeqs: number[];
-  status: ToolPairStatus;
-}
+export type ToolPairStatus = SharedToolPairStatus;
+
+export type ToolPair = SharedToolPair<number>;
 
 /** Minimal event shape the closure logic reads. */
 export interface ClosureEvent {
@@ -68,16 +69,12 @@ export function assistantCallIds(event: ClosureEvent): string[] {
 }
 
 export function classifyPair(callSeqs: readonly number[], resultSeqs: readonly number[]): ToolPairStatus {
-  if (callSeqs.length > 1) return "duplicate_call";
-  if (resultSeqs.length > 1) return "duplicate_result";
-  if (callSeqs.length === 0) return "orphan_result";
-  if (resultSeqs.length === 0) return "missing_result";
-  return "closed";
+  return classifyToolPair(callSeqs, resultSeqs);
 }
 
-/** Only a strictly closed pair may be evicted (and only as a unit). */
+/** Only a strict closed pair may be evicted (and only as a unit). */
 export function isEvictablePair(status: ToolPairStatus): boolean {
-  return status === "closed";
+  return isEvictableToolPair(status);
 }
 
 /**
@@ -105,11 +102,5 @@ export function buildToolPairs(
     }
   }
 
-  const pairs = new Map<string, ToolPair>();
-  for (const callId of new Set([...calls.keys(), ...results.keys()])) {
-    const callSeqs = (calls.get(callId) ?? []).sort((a, b) => a - b);
-    const resultSeqs = (results.get(callId) ?? []).sort((a, b) => a - b);
-    pairs.set(callId, { callId, callSeqs, resultSeqs, status: classifyPair(callSeqs, resultSeqs) });
-  }
-  return pairs;
+  return assembleToolPairs(calls, results, (a, b) => a - b);
 }
