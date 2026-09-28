@@ -12,7 +12,8 @@
  */
 
 import {
-  createApiTaskStateEstimator,
+  createConfiguredTaskStateEstimator,
+  isTaskStateEstimatorConfigured,
   type TaskStateEstimator,
   type TaskStateEstimatorApiConfig,
   type TaskStateEstimatorInput,
@@ -23,7 +24,7 @@ import type { DshEstimatorConfig } from "./config.js";
 
 /** True only when the estimator has the endpoint + credentials it needs to run. */
 export function isEstimatorConfigured(cfg: DshEstimatorConfig): boolean {
-  return Boolean(cfg.baseUrl && cfg.apiKey && cfg.model);
+  return isTaskStateEstimatorConfigured(cfg);
 }
 
 /** Map the DSH adapter config onto the shared estimator config (field-for-field). */
@@ -48,9 +49,7 @@ export function toEstimatorApiConfig(cfg: DshEstimatorConfig): TaskStateEstimato
  * lets the pre-step handler fail open and defer.
  */
 export function createDshTaskStateEstimator(cfg: DshEstimatorConfig): TaskStateEstimator | undefined {
-  if (cfg.enabled === false) return undefined;
-  if (!isEstimatorConfigured(cfg)) return undefined;
-  return createApiTaskStateEstimator(toEstimatorApiConfig(cfg));
+  return createConfiguredTaskStateEstimator(toEstimatorApiConfig(cfg));
 }
 
 /** Run the shared estimator over the codec-produced input. Output is opaque here. */
