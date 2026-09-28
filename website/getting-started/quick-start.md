@@ -42,7 +42,7 @@ node --import tsx/esm apps/cli/src/bin.ts plugin --profile web add /absolute/pat
 
 OpenClaw, Codex, and Claude Code installers configure their host integrations. See [Install Your First Plugin](/getting-started/install-first-plugin) for the changes each installer makes.
 
-For OpenClaw, the release installer builds one archive containing the plugin and the shared `lightrsi` CLI, installs both, and restarts the gateway. On Linux and WSL the command is installed in `~/.local/bin` by default; ensure that directory is on your `PATH`:
+For OpenClaw, the release installer builds one archive containing the plugin and the shared `lightrsi` CLI, installs both, and attempts to restart the gateway. On Linux and WSL the command is installed in `~/.local/bin` by default; ensure that directory is on your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

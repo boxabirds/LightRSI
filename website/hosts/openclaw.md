@@ -13,8 +13,8 @@ This command:
 - Installs the CLI in `~/.local/bin` by default, or in `LIGHTRSI_BIN_DIR` when set
 - Updates `~/.openclaw/openclaw.json`
 - Enables the TokenPilot plugin
-- Switches `plugins.slots.contextEngine` to `layered-context`
-- Sets the default `normal` mode
+- Switches `plugins.slots.contextEngine` to `tokenpilot`
+- Applies the default `normal` mode settings
 - Attempts to restart the OpenClaw gateway
 
 ### Custom Paths
@@ -33,12 +33,14 @@ After install, your `~/.openclaw/openclaw.json` will include a TokenPilot sectio
 {
   "plugins": {
     "slots": {
-      "contextEngine": "layered-context"
+      "contextEngine": "tokenpilot"
     },
     "entries": {
       "tokenpilot": {
         "enabled": true,
-        "mode": "normal"
+        "config": {
+          "enabled": true
+        }
       }
     }
   }
@@ -57,7 +59,7 @@ Expected output:
 - `plugin entry enabled`
 - `config enabled`
 - `mode normal`
-- `context engine slot layered-context`
+- `context engine slot tokenpilot`
 - `stabilizer enabled`
 - `reduction enabled`
 
