@@ -91,7 +91,9 @@ The preset exports a versioned host-binding contract from `src/host-binding.ts`.
 | :-- | :-- |
 | OpenClaw | `stabilizer`, `reduction`, `eviction` |
 | Codex | `stabilizer`, `reduction`, `eviction` |
-| Claude Code | `stabilizer`, `reduction` |
+| Claude Code | `stabilizer`, `reduction`, `eviction` |
+| pi | `stabilizer`, `reduction`, `eviction` |
+| OpenCode | `stabilizer`, `reduction`, `eviction` |
 
 Feature product-surface contributions are initialized through this binding. They no longer depend on importing a feature package for side effects.
 
@@ -114,6 +116,8 @@ Supported host adapters:
   - first successful verification usually happens after hooks are trusted and a new Codex session triggers `SessionStart`
 - `Claude Code`: adapter with gateway routing, stable-prefix, reduction, MCP recovery, report, doctor, and shared browser visual
   - first successful verification usually happens after a new Claude Code session triggers `SessionStart`
+- `pi`: in-process extension with section-based stable prefix, request-time reduction, native recovery tool, opt-in `context_edit` eviction, report, doctor, and shared browser visual
+- `OpenCode`: in-process v1 plugin with stable prefix, request-time reduction, recovery MCP, opt-in overlay eviction, report, doctor, and shared browser visual
 
 Shared product surfaces:
 
@@ -222,6 +226,7 @@ Recommended default behavior:
 - enable `eviction` mainly for longer continuous-session workloads on hosts that expose it
 - on Codex, use `conservative` or `normal`; `aggressive` is intentionally unavailable
 - on Claude Code, use `conservative` or `normal`; `aggressive` is intentionally unavailable
+- on pi and OpenCode, use `conservative` or `normal`; enable eviction explicitly with `eviction on` plus task-state estimator settings
 
 ### Runtime Modes
 
@@ -431,6 +436,10 @@ State layout depends on the host:
   - `$HOME/.codex/tokenpilot-state/tokenpilot/`
 - `Claude Code`
   - `$HOME/.claude/tokenpilot-state/tokenpilot/`
+- `pi`
+  - `$HOME/.pi/agent/tokenpilot-state/tokenpilot/`
+- `OpenCode`
+  - `$HOME/.config/opencode/tokenpilot-state/tokenpilot/`
 
 Useful files include:
 
@@ -468,4 +477,6 @@ More package-level adapter notes live in:
 - [adapters/openclaw/README.md](../../adapters/openclaw/README.md)
 - [adapters/codex/README.md](../../adapters/codex/README.md)
 - [adapters/claude-code/README.md](../../adapters/claude-code/README.md)
+- [adapters/pi/README.md](../../adapters/pi/README.md)
+- [adapters/opencode/README.md](../../adapters/opencode/README.md)
 - [TokenPilot experiment repository](https://github.com/Xubqpanda/TokenPilot)
