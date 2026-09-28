@@ -64,12 +64,49 @@ export function formatOpenClawCleanUsage(): string {
   ].join("\n");
 }
 
+function quotePosixShellArgument(value: string): string {
+  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+}
+
+function quotePowerShellArgument(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 function formatOpenClawInteractiveLaunch(plan: ContextCleanPlan): string | undefined {
   if (!plan.tasks.some((task) => task.selectable)) return undefined;
+  const refusalReason = /[\u0000-\u001f\u007f-\u009f]/u.test(plan.sessionId)
+    ? "contains control characters"
+    : plan.sessionId.startsWith("--") ? "starts with a reserved option prefix" : undefined;
+  if (refusalReason) {
+    return [
+      `Interactive terminal command unavailable: the session id ${refusalReason}.`,
+      "Use the native /lightrsi clean --plan ... --select ... command shown above.",
+    ].join("\n");
+  }
+  const commandPrefix = "lightrsi openclaw clean --require-tty --session";
+  if (/^[A-Za-z0-9_@+=:,./-]+$/u.test(plan.sessionId)) {
+    return [
+      "Interactive selection in this terminal:",
+      "  1. Return to the shell that launched OpenClaw",
+      `  2. Run: ${commandPrefix} ${plan.sessionId}`,
+      "  3. Move with Up/Down, toggle with Space, submit with Enter, cancel with q",
+      "  4. Return to OpenClaw; a submitted plan runs on the next ordinary request",
+      "",
+      "The explicit session id binds the selector to this conversation; no recent-session guess is used.",
+    ].join("\n");
+  }
+  const posixArgument = quotePosixShellArgument(plan.sessionId);
+  const powerShellArgument = quotePowerShellArgument(plan.sessionId);
+  const commandLines = posixArgument === powerShellArgument
+    ? [`  2. Run (POSIX shell or PowerShell): ${commandPrefix} ${posixArgument}`]
+    : [
+        `  2. POSIX shell: ${commandPrefix} ${posixArgument}`,
+        `     PowerShell: ${commandPrefix} ${powerShellArgument}`,
+      ];
   return [
     "Interactive selection in this terminal:",
     "  1. Return to the shell that launched OpenClaw",
-    `  2. Run: lightrsi openclaw clean --require-tty --session ${plan.sessionId}`,
+    ...commandLines,
     "  3. Move with Up/Down, toggle with Space, submit with Enter, cancel with q",
     "  4. Return to OpenClaw; a submitted plan runs on the next ordinary request",
     "",

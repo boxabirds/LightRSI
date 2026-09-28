@@ -4,9 +4,12 @@ import { join } from "node:path";
 
 async function main() {
   await build({
-    entryPoints: ["src/index.ts"],
+    entryPoints: {
+      index: "src/index.ts",
+      "install-cli": "scripts/install-cli.ts",
+    },
     bundle: true,
-    outfile: "dist/index.js",
+    outdir: "dist",
     platform: "node",
     target: "node20",
     format: "cjs",

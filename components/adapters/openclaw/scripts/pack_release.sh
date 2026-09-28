@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
 CLI_DIR="${REPO_DIR}/components/products/cli"
 PLUGIN_BUILD_CMD=(npm run build)
 CLI_BUILD_CMD=(npm run build)
+PACKAGE_MANIFEST_CMD=(npm)
 if command -v node.exe >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; then
   # A repository mounted into WSL may have dependencies installed by Windows.
   # Use the matching Windows Node toolchain without depending on a globally
@@ -15,6 +16,7 @@ if command -v node.exe >/dev/null 2>&1 && command -v cmd.exe >/dev/null 2>&1; th
   # MSYS argument conversion is harmless in WSL and keeps cmd flags intact.
   PLUGIN_BUILD_CMD=(env 'MSYS2_ARG_CONV_EXCL=*' cmd.exe /d /c npm run build)
   CLI_BUILD_CMD=(env 'MSYS2_ARG_CONV_EXCL=*' cmd.exe /d /c npm run build)
+  PACKAGE_MANIFEST_CMD=(env 'MSYS2_ARG_CONV_EXCL=*' cmd.exe /d /c npm)
 fi
 
 cd "${PLUGIN_DIR}"
@@ -48,29 +50,30 @@ fi
 
 mkdir -p "${PACK_TMP_DIR}/package"
 cp -R dist "${PACK_TMP_DIR}/package/dist"
-cp "${CLI_DIR}/dist/cli.js" "${PACK_TMP_DIR}/package/dist/cli.js"
+cp "${CLI_DIR}/dist/cli.js" "${PACK_TMP_DIR}/package/dist/lightrsi.js"
 if [[ -f "${CLI_DIR}/dist/cli.js.map" ]]; then
+  # The CLI bundle already names cli.js.map in its sourceMappingURL footer.
+  # Keep that map filename so packaged stack traces can resolve it.
   cp "${CLI_DIR}/dist/cli.js.map" "${PACK_TMP_DIR}/package/dist/cli.js.map"
 fi
 cp README.md "${PACK_TMP_DIR}/package/README.md"
 cp openclaw.plugin.json "${PACK_TMP_DIR}/package/openclaw.plugin.json"
+cp package.json "${PACK_TMP_DIR}/package/package.json"
 
-node - "${PLUGIN_DIR}/package.json" "${PACK_TMP_DIR}/package/package.json" <<'JS'
-const fs = require("node:fs");
-
-const [src, dst] = process.argv.slice(2);
-const pkg = JSON.parse(fs.readFileSync(src, "utf8"));
-
-// Release tarball is fully bundled. Workspace deps make OpenClaw try to npm
-// install inside the extracted plugin directory, which fails outside the
-// monorepo. Strip runtime/dev deps for the packed artifact.
-delete pkg.dependencies;
-delete pkg.devDependencies;
-delete pkg.scripts;
-pkg.bin = { lightrsi: "dist/cli.js", lightmem2: "dist/cli.js" };
-
-fs.writeFileSync(dst, `${JSON.stringify(pkg, null, 2)}\n`, "utf8");
-JS
+# The Windows/WSL build path may expose node.exe without a POSIX `node`
+# command. Reuse the same npm toolchain selected above so manifest rewriting
+# cannot fail after both bundles have built successfully.
+(
+  cd "${PACK_TMP_DIR}/package"
+  "${PACKAGE_MANIFEST_CMD[@]}" pkg delete dependencies devDependencies scripts >&2
+  "${PACKAGE_MANIFEST_CMD[@]}" pkg set \
+    'bin.lightrsi=dist/lightrsi.js' \
+    'bin.lightmem2=dist/lightrsi.js' \
+    'files[4]=dist/install-cli.js' \
+    'files[5]=dist/install-cli.js.map' \
+    'files[6]=dist/lightrsi.js' \
+    'files[7]=dist/cli.js.map' >&2
+)
 
 archive_name="$(cd "${PACK_TMP_DIR}/package" && npm_config_cache="${NPM_CACHE_DIR}" npm pack --silent)"
 archive_path="${PACK_TMP_DIR}/package/${archive_name}"
