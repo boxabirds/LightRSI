@@ -103,6 +103,22 @@ unaffected. The memo does not change any pass's decision. It is on by default an
 controlled by `reduction.stableArchiveHints`. Setting it to `false` gives the
 reference adapters' exact behaviour.
 
+### Repeat-read detection across requests
+
+`tool_payload_trim` leaves a file read untrimmed when its path was already disclosed:
+the model re-reading a file it has seen summarised is taken as a request for the full
+body. The pass reports the disclosed paths in `disclosedReadPaths` so a caller can carry
+them forward. pi resends the whole history on every request, so carrying every path
+makes the pass treat the *same* read as its own repeat on the next request and send it
+untrimmed. The first live smoke run hit exactly this: the `data.json` read went from
+1,100 chars back to 50,707 mid-turn, and the prefix cache missed from there on.
+
+The glue memo therefore records which segment disclosed each path, and carries a path
+only once that segment has left the history (compaction, eviction). A disclosure whose
+read is still present is re-detected by the pass from the history itself. Output is then
+a pure function of the history, and genuine repeat reads behave as in the reference.
+Regression tests: `shared-canonical-reduction` M1–M5 and D1–D3, `runtime` C8.
+
 ### Segment identity
 
 Claude Code uses message-index segment ids (`message-<i>-block-<j>`). Index ids shift
