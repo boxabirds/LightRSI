@@ -17,6 +17,7 @@ type SegmentBinding = {
   blockIndex?: number;
   blockKey?: "text" | "content";
   toolName?: string;
+  callId?: string;
 };
 
 type ReductionInstruction = {
@@ -82,8 +83,71 @@ export type CodexReductionSummary = {
   diagnostics: CodexReductionDiagnostics;
   visualSegments?: CodexReductionVisualSegment[];
   disclosedReadPaths?: string[];
+  /** Normalized read path -> call_id of the read that first disclosed it (null: not attributable). */
+  disclosedReadOwners?: DisclosedReadOwners;
   skippedReason?: string;
 };
+
+export type DisclosedReadOwners = Record<string, string | null>;
+
+export function normalizeDisclosedReadOwners(value: unknown): DisclosedReadOwners | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const next: DisclosedReadOwners = {};
+  for (const [path, owner] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = path.trim().toLowerCase();
+    if (!normalized) continue;
+    next[normalized] = typeof owner === "string" && owner ? owner : null;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Paths to hand the pass as "already disclosed". Codex resends the whole input
+ * history every request, so a disclosing read that is still in it is re-detected by
+ * the pass itself. Carrying its path too would make the pass treat that same read as
+ * a repeat and send it untrimmed, which breaks the prompt cache. Only paths whose
+ * disclosing read has left the history (compaction) are carried.
+ */
+export function carriedDisclosedReadPaths(
+  owners: DisclosedReadOwners | undefined,
+  presentCallIds: ReadonlySet<string>,
+): string[] | undefined {
+  if (!owners) return undefined;
+  const carried = Object.entries(owners)
+    .filter(([, owner]) => owner === null || !presentCallIds.has(owner))
+    .map(([path]) => path);
+  return carried.length > 0 ? carried : undefined;
+}
+
+/** Add newly disclosed paths, owned by the call_id of the first segment with that path; known paths keep their owner. */
+export function recordDisclosedReadOwners(
+  owners: DisclosedReadOwners | undefined,
+  reportedPaths: unknown,
+  segments: readonly ContextSegment[],
+  bindings: readonly SegmentBinding[],
+): DisclosedReadOwners | undefined {
+  const paths = normalizeDisclosedReadPaths(reportedPaths);
+  if (!paths) return owners;
+  const next: DisclosedReadOwners = { ...(owners ?? {}) };
+  const callIdBySegment = new Map(bindings.map((binding) => [binding.segmentId, binding.callId]));
+  for (const path of paths) {
+    if (path in next) continue;
+    const owner = segments.find((segment) => {
+      const segmentPath = (segment.metadata as Record<string, unknown> | undefined)?.path;
+      return typeof segmentPath === "string" && segmentPath.trim().toLowerCase() === path;
+    });
+    next[path] = (owner && callIdBySegment.get(owner.id)) || null;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function presentCallIds(payload: any): Set<string> {
+  const ids = new Set<string>();
+  for (const item of Array.isArray(payload?.input) ? payload.input : []) {
+    if (item && typeof item === "object" && typeof item.call_id === "string" && item.call_id) ids.add(item.call_id);
+  }
+  return ids;
+}
 
 function normalizeDisclosedReadPaths(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -327,6 +391,7 @@ function buildTurnContext(
       if (!isToolLikeInputItem(item)) return;
       toolLikeItems += 1;
       const callHint = typeof item.call_id === "string" ? toolCallHints.get(item.call_id) : undefined;
+      const callId = typeof item.call_id === "string" && item.call_id ? item.call_id : undefined;
       if (typeof item.output === "string") {
         const id = `input-${itemIndex}-output`;
         segments.push(segmentForText({
@@ -344,6 +409,7 @@ function buildTurnContext(
           itemIndex,
           field: "output",
           toolName: callHint?.toolName ?? (typeof item?.name === "string" ? item.name : undefined),
+          ...(callId ? { callId } : {}),
         });
       }
       if (typeof item.arguments === "string") {
@@ -363,6 +429,7 @@ function buildTurnContext(
           itemIndex,
           field: "arguments",
           toolName: callHint?.toolName ?? (typeof item?.name === "string" ? item.name : undefined),
+          ...(callId ? { callId } : {}),
         });
       }
       if (typeof item.content === "string") {
@@ -382,6 +449,7 @@ function buildTurnContext(
           itemIndex,
           field: "content",
           toolName: callHint?.toolName ?? (typeof item?.name === "string" ? item.name : undefined),
+          ...(callId ? { callId } : {}),
         });
       }
       if (Array.isArray(item.content)) {
@@ -407,6 +475,7 @@ function buildTurnContext(
             blockIndex,
             blockKey,
             toolName: callHint?.toolName ?? (typeof item?.name === "string" ? item.name : undefined),
+            ...(callId ? { callId } : {}),
           });
         });
       }
@@ -657,8 +726,11 @@ export async function applyBeforeCallReductionToPayload(params: {
     };
   }
   const snapshot = await loadCodexSessionSnapshot(config.stateDir, sessionId);
+  // Snapshots written before owners were tracked only have `disclosedReadPaths`; those
+  // are ignored rather than carried, because carrying them reproduces the cache miss.
+  const disclosedReadOwners = normalizeDisclosedReadOwners(snapshot?.disclosedReadOwners);
   const built = buildTurnContext(payload, sessionId, {
-    disclosedReadPaths: normalizeDisclosedReadPaths(snapshot?.disclosedReadPaths),
+    disclosedReadPaths: carriedDisclosedReadPaths(disclosedReadOwners, presentCallIds(payload)),
   });
   const analyzerInstructions = buildAnalyzerReductionInstructions(built.turnCtx.segments, config);
   const fallbackInstructions = buildCodexFallbackReductionInstructions(built.turnCtx.segments, config);
@@ -703,6 +775,7 @@ export async function applyBeforeCallReductionToPayload(params: {
       passEffects,
       diagnostics: built.diagnostics,
       disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
+      disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings),
       skippedReason: "pipeline_no_effect",
     };
   }
@@ -761,6 +834,7 @@ export async function applyBeforeCallReductionToPayload(params: {
     diagnostics: built.diagnostics,
     visualSegments,
     disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
+    disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings),
   };
 }
 
