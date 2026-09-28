@@ -64,3 +64,9 @@ jobs:
 
       - name: Test product surface package
         run: pnpm --dir components/packages/foundation/product-surface test
+
+      - name: Test eviction package
+        run: pnpm --dir components/packages/features/eviction test
+
+      - name: Test DeepSeek Harness adapter
+        run: pnpm --dir components/adapters/deepseek-harness test
