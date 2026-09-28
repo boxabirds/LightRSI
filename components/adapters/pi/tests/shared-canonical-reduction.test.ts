@@ -36,8 +36,10 @@
  *                                       summary counts match the text delta
  *   R6 equivalence: output text == shared runReductionBeforeCall on the same inputs
  *      (modulo the timestamped Archive line)
- *   R7 memo on  → a second run is byte-identical (cache-stable)
- *   R8 memo off, or stableArchiveHints=false → second run differs only in Archive line
+ *   R7 memo on  → a second run is byte-identical (cache-stable); the memo has nothing
+ *      to rewrite because the shared archive path is content-derived
+ *   R8 memo off, or stableArchiveHints=false → a second run is byte-identical too
+ *      (the shared archive path is content-derived)
  *   R9 trimmed content is recoverable through the shared resolveMemoryFaultRecover
  *   R10 non-text blocks (images, tool_call) and message metadata are preserved
  * reduceCanonicalEnvelope across requests with a memo (progressive disclosure)
@@ -281,16 +283,15 @@ describe("reduceCanonicalEnvelope", () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     const second = await reduceCanonicalEnvelope({ envelope: env, config: config(), memo });
     assert.equal(JSON.stringify(second.envelope.messages), JSON.stringify(first.envelope.messages));
-    assert.equal(second.summary.memoReusedSegments, 1);
+    assert.equal(second.summary.memoReusedSegments, 0);
   });
-  it("R8 without the memo (or with stableArchiveHints off) a rerun differs only in the Archive line", async () => {
+  it("R8 without the memo (or with stableArchiveHints off) a rerun is byte-identical too", async () => {
     const env = envelope([{ role: "user", content: "build" }, ...toolTurn("c1", BIG)], "s-nomemo");
     for (const variant of [{ memo: undefined, cfg: config() }, { memo: new ReductionMemo(), cfg: config({ reduction: { stableArchiveHints: false } }) }]) {
       const first = await reduceCanonicalEnvelope({ envelope: env, config: variant.cfg, memo: variant.memo });
       await new Promise((resolve) => setTimeout(resolve, 5));
       const second = await reduceCanonicalEnvelope({ envelope: env, config: variant.cfg, memo: variant.memo });
-      assert.notEqual(resultText(second.envelope, 2), resultText(first.envelope, 2));
-      assert.equal(stripArchive(resultText(second.envelope, 2)), stripArchive(resultText(first.envelope, 2)));
+      assert.equal(resultText(second.envelope, 2), resultText(first.envelope, 2));
     }
   });
   it("R9 trimmed content is recoverable through the shared recovery tool", async () => {

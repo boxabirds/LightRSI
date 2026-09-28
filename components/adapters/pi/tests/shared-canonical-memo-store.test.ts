@@ -15,7 +15,8 @@
  *       <stateDir>/tokenpilot/reduction-memo/, dirty cleared, reload equivalent;
  *       session ids are encoded (no path traversal)
  *   MS7 end to end: reduce → save → load into a fresh memo (host restart) → the same
- *       request is byte-identical; control: a fresh memo without the load differs
+ *       request is byte-identical; a fresh memo without the load is identical too,
+ *       because the shared archive path is content-derived
  */
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
@@ -158,6 +159,6 @@ describe("memo-store", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 5));
     const control = await reduceCanonicalEnvelope({ envelope, config, memo: new ReductionMemo() });
-    assert.notEqual(text(control.envelope), text(a.envelope), "control: without the reloaded memo the Archive line changes");
+    assert.equal(text(control.envelope), text(a.envelope), "archive paths are content-derived, so no memo is needed");
   });
 });
