@@ -210,6 +210,23 @@ test("space toggles selectable tasks and enter submits immediately", async () =>
   assert.match(writes.join(""), /\u001b\[\?25h/);
 });
 
+test("interactive selector escapes control characters in task labels", async () => {
+  const unsafe = interactivePlan();
+  unsafe.tasks[0] = {
+    ...unsafe.tasks[0]!,
+    label: "unsafe\nlabel\u001b[31m",
+  };
+  const { input, writes, terminal } = createFakeTerminal(100);
+  const pending = (promptForCleanTasks as Function)(unsafe, terminal);
+
+  input.emit("keypress", "", { name: "q" });
+  await pending;
+
+  const output = writes.join("");
+  assert.doesNotMatch(output, /unsafe\nlabel|\u001b\[31m/);
+  assert.match(output, /unsafe\\u000alabel\\u001b\[31m/);
+});
+
 test("interactive rows stay within the terminal width and keep task IDs in the static plan", async () => {
   const { input, writes, terminal } = createFakeTerminal(64);
   const pending = (promptForCleanTasks as Function)(longInteractivePlan(), terminal);

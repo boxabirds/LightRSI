@@ -129,6 +129,39 @@ test("chars-only plans show character shares", () => {
   assert.match(text, /100 chars\s+25\.0%\s+clean/);
 });
 
+test("clean renderer escapes terminal control characters from Host plan text", () => {
+  const text = renderCleanPlan({
+    planId: "plan\u001b[31m",
+    hostId: "openclaw",
+    sessionId: "session\nnext",
+    usedTokens: 10,
+    usedChars: 40,
+    protectedTokens: 0,
+    protectedChars: 0,
+    unassignedTokens: 0,
+    unassignedChars: 0,
+    tokenCountMode: "exact",
+    tasks: [{
+      taskId: "task\rhidden",
+      label: "label\u001b[2J",
+      description: "description\nsecond-line",
+      lifecycleState: "completed",
+      tokenCount: 10,
+      charCount: 40,
+      tokenPercent: 100,
+      recommendation: "clean",
+      reasonCodes: ["reason\u0007bell"],
+      selectable: true,
+    }],
+  });
+
+  assert.doesNotMatch(text, /\u001b\[31m|\u001b\[2J|description\nsecond-line|task\rhidden/);
+  assert.match(text, /plan\\u001b\[31m/);
+  assert.match(text, /session\\u000anext/);
+  assert.match(text, /description\\u000asecond-line/);
+  assert.match(text, /reason\\u0007bell/);
+});
+
 test("receipt renderer distinguishes estimates from applied savings", () => {
   const text = renderCleanReceipt({
     planId: "plan-1",

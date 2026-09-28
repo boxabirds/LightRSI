@@ -67,6 +67,11 @@ function characterWidth(value: string): number {
   ) ? 2 : 1;
 }
 
+export function visibleTerminalText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/gu, (character) =>
+    `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
 export function terminalDisplayWidth(value: string): number {
   let width = 0;
   for (const character of value) width += characterWidth(character);
@@ -136,7 +141,9 @@ function wrapTerminalLine(value: string, maxWidth?: number): string[] {
 function risk(task: CleanTaskView): string {
   const level = task.recommendation === "protected" ? "blocked"
     : task.recommendation === "keep" ? "caution" : "low";
-  return task.reasonCodes.length > 0 ? `${level}: ${task.reasonCodes.join(",")}` : level;
+  return task.reasonCodes.length > 0
+    ? `${level}: ${visibleTerminalText(task.reasonCodes.join(","))}`
+    : level;
 }
 
 export function estimateCleanSelection(plan: CleanPlanView, selectedTaskIds: readonly string[]): {
@@ -160,8 +167,8 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
     : Math.max(1, Math.floor(options.maxWidth));
   const rows = plan.tasks.map((task) => [
     task.selectable ? "[ ]" : "[-]",
-    task.taskId,
-    task.description,
+    visibleTerminalText(task.taskId),
+    visibleTerminalText(task.description),
     count(task.tokenCount, task.charCount),
     task.tokenPercent === null
       ? (plan.usedChars > 0 ? `${(task.charCount / plan.usedChars * 100).toFixed(1)}%` : "-")
@@ -171,7 +178,11 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
   ]);
   const widths = fitTableWidths([
     3,
-    Math.max(18, "TASK".length, ...plan.tasks.map((task) => terminalDisplayWidth(task.taskId))),
+    Math.max(
+      18,
+      "TASK".length,
+      ...plan.tasks.map((task) => terminalDisplayWidth(visibleTerminalText(task.taskId))),
+    ),
     22,
     10,
     7,
@@ -190,9 +201,9 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
     ? `${plan.usedTokens} / ${plan.contextWindowTokens} tok (${(plan.usedTokens / plan.contextWindowTokens * 100).toFixed(1)}%)`
     : count(plan.usedTokens, plan.usedChars);
   const lines = [
-    `Context clean plan ${plan.planId}`,
-    `Host/session: ${plan.hostId} / ${plan.sessionId}`,
-    `Context usage: ${usage} (${plan.tokenCountMode})`,
+    `Context clean plan ${visibleTerminalText(plan.planId)}`,
+    `Host/session: ${visibleTerminalText(plan.hostId)} / ${visibleTerminalText(plan.sessionId)}`,
+    `Context usage: ${usage} (${visibleTerminalText(plan.tokenCountMode)})`,
     `Protected context: ${count(plan.protectedTokens, plan.protectedChars)}`,
     `Unassigned context: ${count(plan.unassignedTokens, plan.unassignedChars)}`,
     "",
@@ -201,12 +212,16 @@ export function renderCleanPlan(plan: CleanPlanView, options: CleanPlanRenderOpt
     ...rows.map(format),
     "",
     "Task details:",
-    ...plan.tasks.map((task) => `- ${task.taskId}: ${task.description}`),
+    ...plan.tasks.map((task) => (
+      `- ${visibleTerminalText(task.taskId)}: ${visibleTerminalText(task.description)}`
+    )),
     "",
     "Reason codes:",
     ...plan.tasks
       .filter((task) => task.reasonCodes.length > 0)
-      .map((task) => `- ${task.taskId}: ${task.reasonCodes.join(", ")}`),
+      .map((task) => (
+        `- ${visibleTerminalText(task.taskId)}: ${visibleTerminalText(task.reasonCodes.join(", "))}`
+      )),
     "",
     `Recommended selection estimate: ${count(recommended.tokens, recommended.chars)}`,
   ];
@@ -219,8 +234,10 @@ export function renderCleanReceipt(receipt: CleanReceiptView): string {
     chars,
   );
   const lines = [
-    `Context clean ${receipt.status}: ${receipt.planId}`,
-    `Selected tasks: ${receipt.selectedTaskIds.length > 0 ? receipt.selectedTaskIds.join(", ") : "(none)"}`,
+    `Context clean ${visibleTerminalText(receipt.status)}: ${visibleTerminalText(receipt.planId)}`,
+    `Selected tasks: ${receipt.selectedTaskIds.length > 0
+      ? visibleTerminalText(receipt.selectedTaskIds.join(", "))
+      : "(none)"}`,
     `Estimated savings: ${receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)}`,
     `Scheduled savings: ${receipt.status === "scheduled" || receipt.status === "applied"
       ? receiptCount(receipt.estimatedSavedTokens, receipt.estimatedSavedChars)
@@ -237,7 +254,11 @@ export function renderCleanReceipt(receipt: CleanReceiptView): string {
   }
   lines.push(`Fallback count: ${receipt.fallbackUsed ? 1 : 0}`);
   if (receipt.status === "scheduled") lines.push("Apply timing: next Host request.");
-  if (receipt.deferredTaskIds.length > 0) lines.push(`Deferred tasks: ${receipt.deferredTaskIds.join(", ")}`);
-  if (receipt.reasons.length > 0) lines.push(`Reasons: ${receipt.reasons.join(", ")}`);
+  if (receipt.deferredTaskIds.length > 0) {
+    lines.push(`Deferred tasks: ${visibleTerminalText(receipt.deferredTaskIds.join(", "))}`);
+  }
+  if (receipt.reasons.length > 0) {
+    lines.push(`Reasons: ${visibleTerminalText(receipt.reasons.join(", "))}`);
+  }
   return lines.join("\n");
 }

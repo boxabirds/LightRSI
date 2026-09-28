@@ -37,6 +37,11 @@ runtime component into:
 ~/.openclaw/extensions/tokenpilot
 ```
 
+The same release archive contains the standalone `lightrsi` CLI. The installer
+links it as `~/.local/bin/lightrsi` (or `$LIGHTRSI_BIN_DIR/lightrsi` when that
+override is set) and prints a PATH reminder when necessary. The native command
+and external CLI therefore come from one release artifact.
+
 After install, run the adapter doctor:
 
 ```bash
@@ -81,6 +86,17 @@ provider credentials remain inside OpenClaw's auth store. Older Hosts
 without that surface fall back to an explicitly configured `taskStateEstimator`;
 classification or recommendation failure uses the conservative shared fallback
 and does not make any additional task selectable.
+
+When selectable tasks exist, native analysis also prints an external CLI command
+that contains this exact mapped session id:
+
+```bash
+lightrsi openclaw clean --require-tty --session <current-session-id>
+```
+
+Return to the shell that launched OpenClaw, run that command in the same terminal,
+then return to OpenClaw. The selector never guesses the most recently active
+conversation when more than one OpenClaw session exists.
 
 Schedule only tasks selected from that immutable plan:
 

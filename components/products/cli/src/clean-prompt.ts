@@ -4,6 +4,7 @@ import {
   estimateCleanSelection,
   renderCleanPlan,
   truncateTerminalText,
+  visibleTerminalText,
   type CleanPlanView,
 } from "./clean-renderer.js";
 import { createWindowsConsoleKeyInput } from "./windows-console-key-input.js";
@@ -154,7 +155,7 @@ export async function promptForCleanTasks(
         const marker = task.taskId === activeTaskId ? ">" : " ";
         const checked = task.selectable ? (selected.has(task.taskId) ? "x" : " ") : "-";
         const status = task.selectable ? cleanPromptTaskSize(task) : "protected";
-        return `${marker} [${checked}] ${task.label} · ${status}`;
+        return `${marker} [${checked}] ${visibleTerminalText(task.label)} · ${status}`;
       }),
       separator,
       `Selected estimated release: ${estimateText}`,

@@ -27,6 +27,11 @@ function displayWidth(value: string): number {
   return [...value].reduce((width, character) => width + codePointWidth(character), 0);
 }
 
+function visibleText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/gu, (character) =>
+    `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
 function truncate(value: string, width: number): string {
   if (displayWidth(value) <= width) return value;
   const target = Math.max(0, width - 1);
@@ -80,12 +85,12 @@ export function renderOpenClawCleanPlan(plan: ContextCleanPlan): string {
     .trimEnd();
   const rows = plan.tasks.map((task) => format([
     task.selectable ? "[ ]" : "[-]",
-    task.taskId,
-    task.description || task.label,
+    visibleText(task.taskId),
+    visibleText(task.description || task.label),
     count(task.tokenCount, task.charCount),
     share(plan, task),
     task.recommendation,
-    `${risk(task)}${task.reasonCodes.length > 0 ? `: ${task.reasonCodes.join(",")}` : ""}`,
+    `${risk(task)}${task.reasonCodes.length > 0 ? `: ${visibleText(task.reasonCodes.join(","))}` : ""}`,
   ]));
   const recommended = estimateRecommended(plan);
   const selectable = plan.tasks.filter((task) => task.selectable);
@@ -98,8 +103,8 @@ export function renderOpenClawCleanPlan(plan: ContextCleanPlan): string {
     : count(plan.usedTokens, plan.usedChars);
 
   return [
-    `Context clean plan: ${plan.planId}`,
-    `Host/session: ${plan.hostId} / ${plan.sessionId}`,
+    `Context clean plan: ${visibleText(plan.planId)}`,
+    `Host/session: ${visibleText(plan.hostId)} / ${visibleText(plan.sessionId)}`,
     `Context usage: ${usage} (${plan.tokenCountMode})`,
     `Protected context: ${count(plan.protectedTokens, plan.protectedChars)}`,
     `Unassigned context: ${count(plan.unassignedTokens, plan.unassignedChars)}`,
@@ -112,12 +117,12 @@ export function renderOpenClawCleanPlan(plan: ContextCleanPlan): string {
     "",
     "Task details:",
     ...(plan.tasks.length > 0
-      ? plan.tasks.map((task) => `- ${task.taskId}: ${task.description || task.label}`)
+      ? plan.tasks.map((task) => `- ${visibleText(task.taskId)}: ${visibleText(task.description || task.label)}`)
       : ["- (none)"]),
     "",
     "Reason codes:",
     ...(plan.tasks.length > 0
-      ? plan.tasks.map((task) => `- ${task.taskId}: ${task.reasonCodes.join(", ") || "(none)"}`)
+      ? plan.tasks.map((task) => `- ${visibleText(task.taskId)}: ${visibleText(task.reasonCodes.join(", ") || "(none)")}`)
       : ["- (none)"]),
     "",
     `Recommended selection estimate: ${count(recommended.tokens, recommended.chars)}`,
@@ -125,7 +130,7 @@ export function renderOpenClawCleanPlan(plan: ContextCleanPlan): string {
     "Selectable tasks:",
     "None selected by default.",
     ...(selectable.length > 0
-      ? selectable.map((task, index) => `${index + 1}. ${task.taskId} - ${task.label}`)
+      ? selectable.map((task, index) => `${index + 1}. ${visibleText(task.taskId)} - ${visibleText(task.label)}`)
       : ["(none)"]),
     "",
     "Choose task IDs explicitly after reviewing this plan.",

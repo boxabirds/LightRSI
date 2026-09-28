@@ -131,6 +131,63 @@ test("native clean analyzes the current OpenClaw session without applying change
   assert.match(result.text, /1\. task-done - Completed task/);
   assert.match(result.text, /Schedule selected tasks: \/lightrsi clean --plan ctxclean-demo --select/);
   assert.match(result.text, /No changes applied/);
+  assert.match(result.text, /Interactive selection in this terminal:/);
+  assert.match(
+    result.text,
+    /lightrsi openclaw clean --require-tty --session session-demo/,
+  );
+  assert.match(result.text, /no recent-session guess is used/);
+});
+
+test("native clean carries an explicit OpenClaw session into the terminal selector", async () => {
+  let analyzedSessionId = "";
+  const result = await handleOpenClawContextCleanCommand({
+    ctx: { sessionId: "wrong-current-session" },
+    rawArgs: "--session explicit-session",
+    backend: backend({
+      async analyze(sessionId: string) {
+        analyzedSessionId = sessionId;
+        return { ...plan, sessionId };
+      },
+    }),
+  });
+
+  assert.equal(analyzedSessionId, "explicit-session");
+  assert.match(
+    result.text,
+    /lightrsi openclaw clean --require-tty --session explicit-session/,
+  );
+  assert.doesNotMatch(result.text, /wrong-current-session/);
+});
+
+test("native clean renders session ids as safe terminal arguments", async () => {
+  const render = async (sessionId: string) => (await handleOpenClawContextCleanCommand({
+    ctx: { sessionId },
+    rawArgs: "",
+    backend: backend({ async analyze() { return { ...plan, sessionId }; } }),
+  })).text;
+
+  const unusual = await render(`session with "quotes" $HOME; echo pwned 'single' 中文`);
+  assert.match(unusual, /POSIX shell: .*'session with "quotes" \$HOME; echo pwned '"'"'single'"'"' 中文'/);
+  assert.match(unusual, /PowerShell: .*'session with "quotes" \$HOME; echo pwned ''single'' 中文'/);
+  assert.doesNotMatch(unusual, /Run: .*--session session with/);
+
+  const control = await render("session-safe\necho pwned");
+  assert.match(control, /terminal command unavailable.*control characters/i);
+  assert.doesNotMatch(control, /--session session-safe/);
+  assert.match(control, /Host\/session: openclaw \/ session-safe\\u000aecho pwned/);
+  assert.doesNotMatch(control, /Host\/session: openclaw \/ session-safe\necho pwned/);
+
+  const quoted = await render("%PATH%");
+  assert.match(
+    quoted,
+    /Run \(POSIX shell or PowerShell\): lightrsi openclaw clean --require-tty --session '%PATH%'/,
+  );
+  assert.doesNotMatch(quoted, /Run: .*--session %PATH%/);
+
+  const rejected = await render("--wrong-session");
+  assert.match(rejected, /terminal command unavailable.*reserved option prefix/i);
+  assert.doesNotMatch(rejected, /--session '--wrong-session'/);
 });
 
 test("native clean forwards only the explicit plan task selection", async () => {
@@ -258,6 +315,7 @@ test("native command registration preserves aliases and exposes clean help", asy
   assert.ok(command);
   const cleanHelp = await command.handler({ args: "clean --help" });
   assert.match(cleanHelp.text, /\/lightrsi clean --plan/);
+  assert.match(cleanHelp.text, /lightrsi openclaw clean --require-tty --session/);
   const generalHelp = await command.handler({ args: "help" });
   assert.match(generalHelp.text, /Context Cleaner:/);
 });
