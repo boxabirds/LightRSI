@@ -54,6 +54,15 @@ export type ArchiveLocationParams = {
   segmentId: string;
   workspaceDir?: string;
   archiveDir?: string;
+  /**
+   * The content being archived. When given, the file name is derived from the
+   * segment id and a hash of the session id and this text instead of the current
+   * time, so the same content in the same session always gets the same path. Adapters re-reduce the whole history on
+   * every request; a timestamped name changed the recovery hint each time (breaking
+   * prompt caching), wrote a new file each time, and could differ from the file
+   * actually written when the clock ticked between the hint and the write.
+   */
+  originalText?: string;
 };
 
 export type ArchiveLocation = {
@@ -166,8 +175,9 @@ export async function archiveContent(params: ArchiveContentParams): Promise<Arch
 
 export function buildArchiveLocation(params: ArchiveLocationParams): ArchiveLocation {
   const archiveDir = params.archiveDir ?? defaultArchiveDir(params.sessionId, params.workspaceDir);
-  const timestamp = Date.now();
-  const fileName = `${timestamp}-${sanitizePathPart(params.segmentId)}.json`;
+  const fileName = typeof params.originalText === "string"
+    ? `${sanitizePathPart(params.segmentId)}-${hashText(`${params.sessionId}\u0000${params.originalText}`).slice(0, 16)}.json`
+    : `${Date.now()}-${sanitizePathPart(params.segmentId)}.json`;
   const archivePath = join(archiveDir, fileName);
   return { archiveDir, archivePath };
 }
