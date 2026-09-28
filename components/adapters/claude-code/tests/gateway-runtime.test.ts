@@ -963,6 +963,127 @@ export function saveConfig(file: string, text: string) {
   }
 });
 
+test("gateway runtime keeps a read trimmed while that same read is still in the history", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lightrsi-claude-gateway-same-read-"));
+  const proxyPort = await reserveUnusedPort();
+  const codePayload = `
+export function loadConfig(file: string) {
+  return file.trim();
+}
+
+export function saveConfig(file: string, text: string) {
+  return text + file;
+}
+`.repeat(30);
+  const seenPayloads: Array<Record<string, unknown>> = [];
+  const forwarder: HostGatewayForwarder = {
+    requestRaw: async () => { throw new Error("requestRaw not used in test"); },
+    async request(params) {
+      seenPayloads.push(params.payload as Record<string, unknown>);
+      return {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+        text: JSON.stringify({
+          id: "msg_disclosed_1",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          usage: { input_tokens: 20, output_tokens: 5 },
+          stop_reason: "end_turn",
+        }),
+      };
+    },
+    async requestStream() {
+      throw new Error("stream path should not be used in this test");
+    },
+  };
+
+  const runtime = await startClaudeCodeGatewayRuntime({
+    config: normalizeTokenPilotClaudeCodeConfig({
+      stateDir: join(dir, "state"),
+      proxyPort,
+      reduction: {
+        triggerMinChars: 256,
+        maxToolChars: 300,
+        passes: {
+          readStateCompaction: false,
+          toolPayloadTrim: true,
+          htmlSlimming: false,
+          execOutputTruncation: false,
+          agentsStartupOptimization: false,
+        },
+      },
+    }),
+    logger: createConsoleLogger(false),
+    forwarder,
+  });
+
+  try {
+    for (let turn = 0; turn < 2; turn += 1) {
+      const response = await fetch(`${runtime.baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": "sess-same-read-1",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          stream: false,
+          system: "Your working directory is: /repo/demo",
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "toolu_read_0",
+                  name: "Read",
+                  input: { path: "/repo/src/config.ts" },
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "summarize this" },
+                { type: "tool_result", tool_use_id: "toolu_read_0", content: codePayload },
+              ],
+            },
+            ...(turn === 0 ? [] : [
+              { role: "assistant", content: [{ type: "tool_use", id: "toolu_write_1", name: "Write", input: { path: "/repo/out.txt", content: "x" } }] },
+              { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_write_1", content: "wrote 1 byte" }] },
+            ]),
+          ],
+          max_tokens: 256,
+        }),
+      });
+      assert.equal(response.status, 200);
+    }
+
+    assert.equal(seenPayloads.length, 2);
+    const firstMessages = seenPayloads[0]?.messages as Array<Record<string, unknown>>;
+    const secondMessages = seenPayloads[1]?.messages as Array<Record<string, unknown>>;
+    const firstToolResult = ((firstMessages?.[1]?.content as Array<Record<string, unknown>>)?.[1] ?? {}) as Record<string, unknown>;
+    const secondToolResult = ((secondMessages?.[1]?.content as Array<Record<string, unknown>>)?.[1] ?? {}) as Record<string, unknown>;
+
+    const firstText = String(firstToolResult.content ?? firstToolResult.text ?? "");
+    const secondText = String(secondToolResult.content ?? secondToolResult.text ?? "");
+    assert.match(firstText, /\[code outlined lines=/);
+    assert.match(secondText, /\[code outlined lines=/, "the same read must not be treated as a repeat read");
+    assert.equal(secondText, firstText);
+
+    const snapshot = JSON.parse(
+      await readFile(join(dir, "state", "session-state", "sessions", "sess-same-read-1.json"), "utf8"),
+    ) as { disclosedReadOwners?: Record<string, string | null> };
+    assert.deepEqual(snapshot.disclosedReadOwners, { "/repo/src/config.ts": "toolu_read_0" });
+  } finally {
+    await runtime.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("gateway runtime does not record ux-effects when reduced request fails upstream", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lightrsi-claude-gateway-failed-"));
   const proxyPort = await reserveUnusedPort();
