@@ -24,6 +24,9 @@
  *   R4 no session id → untouched
  *   R5 malformed messages → untouched, no throw
  *   R6 reduction module off → no replacements
+ *   R7 a trimmed file read stays byte-identical on the next request after another
+ *      tool turn is appended (regression: repeat-read detection must not fire on the
+ *      same read resent with the full history)
  * Eviction overlay (messages.transform)
  *   E1 default config → estimator never created, no overlay written
  *   E2 enabled + completed earlier turn → overlay saved and applied (stub text in the part)
@@ -225,6 +228,25 @@ describe("experimental.chat.messages.transform", () => {
     const before = [...messages];
     await env.hooks["experimental.chat.messages.transform"]!({}, { messages });
     messages.forEach((m, i) => assert.equal(m, before[i]));
+  });
+  it("R7 a trimmed file read stays byte-identical on the next request", async () => {
+    const env = await setup();
+    const code = Array.from({ length: 400 }, (_, i) => `export function handler${i}(input: string): string {\n  return input.trim() + "${i}";\n}\n`).join("\n");
+    const toolMessage = (id: string, callID: string, tool: string, input: Record<string, unknown>, output: string): OcMessageWithParts => ({
+      info: { id, sessionID: S, role: "assistant" },
+      parts: [{ id: `p_${id}`, sessionID: S, messageID: id, type: "tool", callID, tool, state: { status: "completed", input, output, title: tool, metadata: {}, time: { start: 1, end: 2 } } }],
+    });
+    const base = (): OcMessageWithParts[] => [
+      { info: { id: "msg_u1", sessionID: S, role: "user", model: { providerID: "llama", modelID: "qwen3" } }, parts: [{ id: "p_u1", sessionID: S, messageID: "msg_u1", type: "text", text: "read the handlers" }] },
+      toolMessage("msg_a1", "call_r", "read", { filePath: "/work/src/handlers.ts" }, code),
+    ];
+    const first = base();
+    await env.hooks["experimental.chat.messages.transform"]!({}, { messages: first });
+    const readPart = (messages: OcMessageWithParts[]) => JSON.stringify(messages[1]!.parts[0]);
+    assert.ok(readPart(first).length < JSON.stringify(base()[1]!.parts[0]).length, "precondition: the read is trimmed");
+    const second = [...base(), toolMessage("msg_a2", "call_w", "write", { filePath: "/work/out.txt", content: "x" }, "wrote 1 byte")];
+    await env.hooks["experimental.chat.messages.transform"]!({}, { messages: second });
+    assert.equal(readPart(second), readPart(first));
   });
 });
 

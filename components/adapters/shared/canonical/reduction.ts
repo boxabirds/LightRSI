@@ -107,10 +107,48 @@ function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
+function normalizeDisclosedPath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return normalized || undefined;
+}
+
 /** Per-session memo of first reduction outputs plus disclosed read paths. */
 export class ReductionMemo {
   private readonly bySegment = new Map<string, string>();
-  disclosedReadPaths: string[] | undefined;
+  /** Normalized read path -> id of the segment that first disclosed it (`undefined` if not attributable). */
+  private readonly disclosedBy = new Map<string, string | undefined>();
+
+  /** Every read path disclosed so far this session. */
+  get disclosedReadPaths(): string[] | undefined {
+    return this.disclosedBy.size > 0 ? [...this.disclosedBy.keys()] : undefined;
+  }
+
+  /**
+   * Paths to hand the pass as "already disclosed" for this request. The host
+   * resends the full history every request, so a disclosing read that is still
+   * present is re-detected by the pass itself; carrying its path too would make the
+   * pass treat that same read as a repeat and send it untrimmed (cache miss). Only
+   * paths whose disclosing read has left the history (compaction, eviction,
+   * pruning) are carried.
+   */
+  carriedDisclosedReadPaths(presentSegmentIds: ReadonlySet<string>): string[] | undefined {
+    const carried = [...this.disclosedBy]
+      .filter(([, segmentId]) => segmentId === undefined || !presentSegmentIds.has(segmentId))
+      .map(([path]) => path);
+    return carried.length > 0 ? carried : undefined;
+  }
+
+  /** Record the pass's disclosed paths, attributing new ones to the first matching read segment. */
+  recordDisclosedReadPaths(paths: unknown, segments: readonly ContextSegment[]): void {
+    if (!Array.isArray(paths)) return;
+    for (const entry of paths) {
+      const path = normalizeDisclosedPath(entry);
+      if (!path || this.disclosedBy.has(path)) continue;
+      const owner = segments.find((segment) => normalizeDisclosedPath(segment.metadata?.path) === path);
+      this.disclosedBy.set(path, owner?.id);
+    }
+  }
 
   private key(segmentId: string, originalText: string): string {
     return `${segmentId}\u0000${sha256(originalText)}`;
@@ -136,7 +174,7 @@ export class ReductionMemo {
 
   clear(): void {
     this.bySegment.clear();
-    this.disclosedReadPaths = undefined;
+    this.disclosedBy.clear();
   }
 }
 
@@ -519,8 +557,9 @@ export async function reduceCanonicalEnvelope(params: {
     return { envelope, summary: emptySummary(noDiagnostics, "disabled") };
   }
 
+  const presentSegmentIds = new Set(buildCanonicalReductionTurnContext(envelope).bindings.map((binding) => binding.segmentId));
   const prepared = prepareCanonicalReductionInputs(envelope, config, {
-    disclosedReadPaths: memo?.disclosedReadPaths,
+    disclosedReadPaths: memo?.carriedDisclosedReadPaths(presentSegmentIds),
   });
   const totalChars = prepared.diagnostics.candidateChars;
   if (prepared.turnCtx.segments.length === 0 || totalChars < config.reduction.triggerMinChars) {
@@ -538,10 +577,7 @@ export async function reduceCanonicalEnvelope(params: {
     turnCtx: prepared.turnCtx,
     passes: prepared.passes,
   });
-  if (memo) {
-    const disclosed = reducedCtx.metadata?.disclosedReadPaths;
-    if (Array.isArray(disclosed)) memo.disclosedReadPaths = disclosed.filter((entry): entry is string => typeof entry === "string");
-  }
+  memo?.recordDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths, prepared.turnCtx.segments);
   const passEffects = report.map((entry) => ({
     id: String(entry.id),
     changed: entry.changed,

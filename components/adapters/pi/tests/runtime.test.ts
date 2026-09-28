@@ -31,6 +31,9 @@
  *   C5 user target → first real user message prefixed request-locally; input untouched
  *   C6 reduction off but prefix pending → only the prefix is applied
  *   C7 malformed messages → undefined, no throw
+ *   C8 a trimmed file read stays byte-identical on the next request in the same
+ *      process after another tool turn is appended (regression: live smoke run sent it
+ *      untrimmed as a "repeat read" → prefix-cache miss)
  * turn_end (eviction)
  *   T1 default config (eviction off) → undefined, estimator never created
  *   T2 enabled + completed earlier turn → context_edit drafts for evicted entry ids,
@@ -337,6 +340,25 @@ describe("context", () => {
     const env = await started();
     assert.equal(await env.call("context", { type: "context", messages: null as unknown as PiAgentMessage[] }), undefined);
     assert.equal(await env.call("context", { type: "context", messages: [null, 3, "x"] as unknown as PiAgentMessage[] }), undefined);
+  });
+  it("C8 a trimmed file read stays byte-identical on the next request", async () => {
+    const env = await started();
+    const code = Array.from({ length: 400 }, (_, i) => `export function handler${i}(input: string): string {\n  return input.trim() + "${i}";\n}\n`).join("\n");
+    const base: PiAgentMessage[] = [
+      { role: "user", content: "read the handlers", timestamp: 1 },
+      { role: "assistant", content: [{ type: "toolCall", id: "call_r", name: "read", arguments: { path: "src/handlers.ts" } }], timestamp: 2 },
+      { role: "toolResult", toolCallId: "call_r", toolName: "read", content: [{ type: "text", text: code }], isError: false, timestamp: 3 },
+    ];
+    const readText = (out: unknown) => JSON.stringify((out as { messages: PiAgentMessage[] }).messages[2]);
+    const first = await env.call("context", { type: "context", messages: base });
+    assert.ok(readText(first).length < JSON.stringify(base[2]).length, "precondition: the read is trimmed");
+    const next: PiAgentMessage[] = [
+      ...base,
+      { role: "assistant", content: [{ type: "toolCall", id: "call_w", name: "write", arguments: { path: "out.txt", content: "x" } }], timestamp: 4 },
+      { role: "toolResult", toolCallId: "call_w", toolName: "write", content: [{ type: "text", text: "wrote 1 byte" }], isError: false, timestamp: 5 },
+    ];
+    const second = await env.call("context", { type: "context", messages: next });
+    assert.equal(readText(second), readText(first));
   });
 });
 

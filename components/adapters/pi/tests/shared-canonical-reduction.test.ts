@@ -8,6 +8,13 @@
  *   S4 same key, identical next                      → returns next, not reused
  *   S5 same segment id, different original text      → independent keys
  *   S6 clear() forgets outputs and disclosed read paths
+ * ReductionMemo disclosed read paths (carried across requests)
+ *   M1 carriedDisclosedReadPaths: nothing recorded → undefined
+ *   M2 owner segment still present → not carried
+ *   M3 owner segment absent → carried
+ *   M4 unattributable path (no segment has that path) → always carried
+ *   M5 recordDisclosedReadPaths ignores non-arrays, non-strings and blanks; normalizes
+ *      (trim + lowercase); the first owner wins
  * buildCanonicalReductionTurnContext
  *   B1 only `tool_result` blocks become segments (text/tool_call/string content ignored)
  *   B2 segment id is `tool-<callId>`; positional `message-i-block-j` without a call id
@@ -33,6 +40,13 @@
  *   R8 memo off, or stableArchiveHints=false → second run differs only in Archive line
  *   R9 trimmed content is recoverable through the shared resolveMemoryFaultRecover
  *   R10 non-text blocks (images, tool_call) and message metadata are preserved
+ * reduceCanonicalEnvelope across requests with a memo (progressive disclosure)
+ *   D1 a trimmed read still in history stays trimmed and byte-identical on the next
+ *      request (regression: live pi smoke run sent it untrimmed → prefix-cache miss)
+ *   D2 once the disclosing read has left history, a fresh read of the same path is a
+ *      repeat read and is left untrimmed (shared semantics preserved)
+ *   D3 two reads of one path in the same history: first trimmed, second untrimmed,
+ *      identical across repeated requests
  * passSavedChars(summary)
  *   PS1 undefined summary → {}
  *   PS2 only passes that changed text with savedChars > 0 are listed
@@ -123,7 +137,8 @@ describe("ReductionMemo.settle", () => {
   it("S6 clear forgets outputs and disclosed read paths", () => {
     const memo = new ReductionMemo();
     memo.settle("seg", "orig", "a");
-    memo.disclosedReadPaths = ["/a"];
+    memo.recordDisclosedReadPaths(["/a"], []);
+    assert.deepEqual(memo.disclosedReadPaths, ["/a"]);
     memo.clear();
     assert.equal(memo.size, 0);
     assert.equal(memo.disclosedReadPaths, undefined);
@@ -317,5 +332,78 @@ describe("passSavedChars", () => {
   });
   it("PS3 repeated pass ids are summed", () => {
     assert.deepEqual(passSavedChars(summary([effect("a", true, 10), effect("a", true, 5)])), { a: 15 });
+  });
+});
+
+describe("ReductionMemo disclosed read paths", () => {
+  const seg = (id: string, path?: string) => ({ id, kind: "volatile", text: "x", priority: 0, metadata: path ? { path } : {} }) as never;
+  it("M1 nothing recorded carries nothing", () => {
+    assert.equal(new ReductionMemo().carriedDisclosedReadPaths(new Set()), undefined);
+  });
+  it("M2 a path whose owner is still present is not carried", () => {
+    const memo = new ReductionMemo();
+    memo.recordDisclosedReadPaths(["/repo/a.ts"], [seg("tool-1", "/repo/a.ts")]);
+    assert.equal(memo.carriedDisclosedReadPaths(new Set(["tool-1"])), undefined);
+  });
+  it("M3 a path whose owner has left the history is carried", () => {
+    const memo = new ReductionMemo();
+    memo.recordDisclosedReadPaths(["/repo/a.ts"], [seg("tool-1", "/repo/a.ts")]);
+    assert.deepEqual(memo.carriedDisclosedReadPaths(new Set(["tool-2"])), ["/repo/a.ts"]);
+  });
+  it("M4 an unattributable path is always carried", () => {
+    const memo = new ReductionMemo();
+    memo.recordDisclosedReadPaths(["/repo/b.ts"], [seg("tool-1", "/repo/a.ts")]);
+    assert.deepEqual(memo.carriedDisclosedReadPaths(new Set(["tool-1"])), ["/repo/b.ts"]);
+  });
+  it("M5 recording ignores junk, normalizes, and keeps the first owner", () => {
+    const memo = new ReductionMemo();
+    memo.recordDisclosedReadPaths("nope", [seg("tool-1", "/a")]);
+    memo.recordDisclosedReadPaths([42, "", "  "], [seg("tool-1", "/a")]);
+    assert.equal(memo.disclosedReadPaths, undefined);
+    memo.recordDisclosedReadPaths(["  /Repo/A.ts "], [seg("tool-1", "/repo/a.ts"), seg("tool-2", "/repo/a.ts")]);
+    memo.recordDisclosedReadPaths(["/repo/a.ts"], [seg("tool-3", "/repo/a.ts")]);
+    assert.deepEqual(memo.disclosedReadPaths, ["/repo/a.ts"]);
+    assert.equal(memo.carriedDisclosedReadPaths(new Set(["tool-1"])), undefined);
+    assert.deepEqual(memo.carriedDisclosedReadPaths(new Set(["tool-2", "tool-3"])), ["/repo/a.ts"]);
+  });
+});
+
+describe("reduceCanonicalEnvelope across requests (progressive disclosure)", () => {
+  const CODE = Array.from({ length: 400 }, (_, i) => `export function handler${i}(input: string): string {\n  const value = input.trim();\n  return value + "${i}";\n}\n`).join("\n");
+  const PATH = "/repo/src/handlers.ts";
+  const user = (text: string): RuntimeMessage => ({ role: "user", content: [{ type: "text", text }] });
+  const read = (callId: string) => toolTurn(callId, CODE, "read", { path: PATH });
+  const trimmedAt = (env: HostRequestEnvelope, index: number) => resultText(env, index).length < CODE.length;
+
+  it("D1 a trimmed read still in history stays trimmed and byte-identical on the next request", async () => {
+    const memo = new ReductionMemo();
+    const first = [user("read the handlers"), ...read("r1")];
+    const a = await reduceCanonicalEnvelope({ envelope: envelope(first, "d1"), config: config(), memo });
+    assert.ok(trimmedAt(a.envelope, 2), "precondition: the first read is trimmed");
+    const next = [...first, ...toolTurn("w1", "wrote 10 bytes", "write", { path: "/repo/out.txt" })];
+    const b = await reduceCanonicalEnvelope({ envelope: envelope(next, "d1"), config: config(), memo });
+    assert.equal(resultText(b.envelope, 2), resultText(a.envelope, 2));
+    const c = await reduceCanonicalEnvelope({ envelope: envelope(next, "d1"), config: config(), memo });
+    assert.equal(resultText(c.envelope, 2), resultText(a.envelope, 2));
+  });
+
+  it("D2 after the disclosing read leaves history, a fresh read of the same path is left untrimmed", async () => {
+    const memo = new ReductionMemo();
+    const a = await reduceCanonicalEnvelope({ envelope: envelope([user("read"), ...read("r1")], "d2"), config: config(), memo });
+    assert.ok(trimmedAt(a.envelope, 2));
+    const compacted = [user("summary of earlier work"), user("read it again in full"), ...read("r2")];
+    const b = await reduceCanonicalEnvelope({ envelope: envelope(compacted, "d2"), config: config(), memo });
+    assert.equal(resultText(b.envelope, 3), CODE);
+  });
+
+  it("D3 two reads of one path in one history: first trimmed, second untrimmed, stable across requests", async () => {
+    const memo = new ReductionMemo();
+    const history = [user("read"), ...read("r1"), user("again"), ...read("r2")];
+    const a = await reduceCanonicalEnvelope({ envelope: envelope(history, "d3"), config: config(), memo });
+    assert.ok(trimmedAt(a.envelope, 2));
+    assert.equal(resultText(a.envelope, 5), CODE);
+    const b = await reduceCanonicalEnvelope({ envelope: envelope(history, "d3"), config: config(), memo });
+    assert.equal(resultText(b.envelope, 2), resultText(a.envelope, 2));
+    assert.equal(resultText(b.envelope, 5), CODE);
   });
 });
