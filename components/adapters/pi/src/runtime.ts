@@ -36,6 +36,7 @@ import {
   type CanonicalSurfaceEntry,
 } from "../../shared/canonical/eviction.js";
 import { createFileLogger, failOpen, type AdapterLogger } from "../../shared/canonical/logger.js";
+import { loadReductionMemo, saveReductionMemoIfDirty } from "../../shared/canonical/memo-store.js";
 import { ReductionMemo, passSavedChars } from "../../shared/canonical/reduction.js";
 import {
   decodePiMessages,
@@ -85,7 +86,9 @@ const RECOVERY_TOOL_SCHEMA = {
 export class PiTokenPilotRuntime {
   config: TokenPilotPiConfig | undefined;
   sessionId: string | undefined;
-  readonly memo = new ReductionMemo();
+  /** Archive-path memo of `memoSessionId`, persisted under stateDir so pi restarts keep the prefix stable. */
+  memo = new ReductionMemo();
+  private memoSessionId: string | undefined;
   readonly logger: AdapterLogger;
   /** Volatile prompt lines to prepend request-locally to the first user message (user target). */
   pendingUserPrefix: string | undefined;
@@ -129,14 +132,25 @@ export class PiTokenPilotRuntime {
         namespaceDir: "tokenpilot",
       }));
       this.sessionId = this.resolveSessionId(ctx);
+      this.memoSessionId = undefined;
       if (!config.enabled) return;
+      await this.memoFor(config, this.sessionId);
       await writeLatestSessionRef(config.stateDir, this.sessionId, new Date().toISOString());
       this.logger.info("session_start", { sessionId: this.sessionId, cwd: ctx.cwd });
     }, undefined);
   }
 
+  private async memoFor(config: TokenPilotPiConfig, sessionId: string): Promise<ReductionMemo> {
+    if (this.memoSessionId !== sessionId) {
+      this.memo = await loadReductionMemo(config.stateDir, sessionId);
+      this.memoSessionId = sessionId;
+    }
+    return this.memo;
+  }
+
   onSessionShutdown(): void {
     this.memo.clear();
+    this.memoSessionId = undefined;
     this.pendingUserPrefix = undefined;
   }
 
@@ -225,9 +239,11 @@ export class PiTokenPilotRuntime {
             messages: canonical,
           }),
           config,
-          memo: this.memo,
+          memo: await this.memoFor(config, sessionId),
         });
         canonical = reduced.messages;
+        await saveReductionMemoIfDirty(config.stateDir, sessionId, this.memo)
+          .catch((error) => this.logger.warn("reduction memo save failed", error));
         if ((reduced.summary?.savedChars ?? 0) > 0) {
           await appendRecentTurnBinding(config.stateDir, {
             sessionId,

@@ -114,6 +114,7 @@ lightrsi pi doctor   # "eviction: active" once complete
 
 - `tokenpilot/adapter.log`: fail-open reasons and debug lines. Nothing is written to pi's terminal.
 - `tokenpilot/tool-result-archives/<session>/`: originals of trimmed and evicted content (recovery)
+- `tokenpilot/reduction-memo/<session>.json`: the archive-path memo, so a restarted pi (`pi -p`, `--continue`) resends byte-identical history
 - `session-state/latest.json`, `session-state/bindings/<session>.jsonl`
 - `ux-effects/latest.json`, `ux-effects/sessions/<session>.json`
 - the registry under the shared history layout (eviction task state, when enabled)

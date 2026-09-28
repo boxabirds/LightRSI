@@ -96,6 +96,13 @@ prefix caching from the first reduced output onward. Controlled by
 `reduction.stableArchiveHints` (default `true`). `false` gives the reference adapters'
 exact behaviour.
 
+The memo is saved per session to `<stateDir>/tokenpilot/reduction-memo/<session>.json`
+whenever it changes and loaded on the session's first request, so `opencode run
+--continue` and TUI restarts keep resending byte-identical history. The live smoke run
+showed each restart missing the prefix cache at the first trimmed result until the
+memo was persisted. Bounded to 1,024 segments per session. Regression tests: pi package
+`shared-canonical-memo-store` MS1–MS7, OpenCode `runtime` R8–R9.
+
 ### Repeat-read detection across requests
 
 `tool_payload_trim` leaves a file read untrimmed when its path was already disclosed:

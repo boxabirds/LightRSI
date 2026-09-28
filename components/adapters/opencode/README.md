@@ -91,6 +91,7 @@ lightrsi opencode eviction set minBlockChars <number>
 
 - `tokenpilot/adapter.log`: fail-open reasons. OpenCode does not catch plugin errors, so every hook catches its own and continues unmodified.
 - `tokenpilot/tool-result-archives/<session>/`: recovery archives
+- `tokenpilot/reduction-memo/<session>.json`: the archive-path memo, so a restarted OpenCode (`opencode run --continue`) resends byte-identical history
 - `tokenpilot/eviction-overlay/<session>.json`: durable eviction decisions (when eviction is on)
 - `session-state/…`, `ux-effects/…`: report and visual data
 

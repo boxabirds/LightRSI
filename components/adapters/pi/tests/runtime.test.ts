@@ -34,6 +34,10 @@
  *   C8 a trimmed file read stays byte-identical on the next request in the same
  *      process after another tool turn is appended (regression: live smoke run sent it
  *      untrimmed as a "repeat read" → prefix-cache miss)
+ *   C9 a restarted pi process (new runtime, same stateDir + session) sends the
+ *      byte-identical history (archive memo reloaded; regression: per-turn `pi -p`
+ *      restarts missed the prefix cache at the first trimmed result)
+ *   C10 memo save failure → the reduced history is still returned, warning logged
  * turn_end (eviction)
  *   T1 default config (eviction off) → undefined, estimator never created
  *   T2 enabled + completed earlier turn → context_edit drafts for evicted entry ids,
@@ -50,7 +54,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -359,6 +363,24 @@ describe("context", () => {
     ];
     const second = await env.call("context", { type: "context", messages: next });
     assert.equal(readText(second), readText(first));
+  });
+  it("C9 a restarted pi process sends byte-identical history", async () => {
+    const shared = await stateDir();
+    const before = await started({ stateDir: shared });
+    const first = await before.call("context", { type: "context", messages: transcript() });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const after = await started({ stateDir: shared });
+    const second = await after.call("context", { type: "context", messages: transcript() });
+    assert.ok(first, "precondition: the first request is reduced");
+    assert.equal(JSON.stringify(second), JSON.stringify(first));
+  });
+  it("C10 a memo save failure still returns the reduced history", async () => {
+    const env = await started();
+    await mkdir(join(env.config.stateDir, "tokenpilot"), { recursive: true });
+    await writeFile(join(env.config.stateDir, "tokenpilot", "reduction-memo"), "not a directory");
+    const out = await env.call("context", { type: "context", messages: transcript() }) as { messages: PiAgentMessage[] } | undefined;
+    assert.ok(out && JSON.stringify(out.messages[2]).length < BIG.length);
+    assert.match(await readFile(adapterLogPath(env.config.stateDir), "utf8"), /reduction memo save failed/);
   });
 });
 

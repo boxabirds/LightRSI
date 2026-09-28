@@ -103,6 +103,14 @@ unaffected. The memo does not change any pass's decision. It is on by default an
 controlled by `reduction.stableArchiveHints`. Setting it to `false` gives the
 reference adapters' exact behaviour.
 
+The memo is saved per session to `<stateDir>/tokenpilot/reduction-memo/<session>.json`
+whenever it changes, and loaded at `session_start`. pi processes restart often (every
+`pi -p` call, `--continue`, `/resume`), and the live smoke run showed each restart
+missing the prefix cache at the first trimmed result until the memo was persisted.
+It is bounded to 1,024 segments per session (oldest dropped first). A missing or
+unreadable file yields an empty memo, which only costs one cache miss. Regression
+tests: `shared-canonical-memo-store` MS1–MS7, `runtime` C9–C10.
+
 ### Repeat-read detection across requests
 
 `tool_payload_trim` leaves a file read untrimmed when its path was already disclosed:

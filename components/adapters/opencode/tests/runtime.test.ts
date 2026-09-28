@@ -27,6 +27,10 @@
  *   R7 a trimmed file read stays byte-identical on the next request after another
  *      tool turn is appended (regression: repeat-read detection must not fire on the
  *      same read resent with the full history)
+ *   R8 a restarted OpenCode process (new runtime, same stateDir + session) sends the
+ *      byte-identical history (archive memo reloaded; regression: each
+ *      `opencode run --continue` missed the prefix cache at the first trimmed result)
+ *   R9 memo save failure → the reduction is still applied, warning logged
  * Eviction overlay (messages.transform)
  *   E1 default config → estimator never created, no overlay written
  *   E2 enabled + completed earlier turn → overlay saved and applied (stub text in the part)
@@ -247,6 +251,27 @@ describe("experimental.chat.messages.transform", () => {
     const second = [...base(), toolMessage("msg_a2", "call_w", "write", { filePath: "/work/out.txt", content: "x" }, "wrote 1 byte")];
     await env.hooks["experimental.chat.messages.transform"]!({}, { messages: second });
     assert.equal(readPart(second), readPart(first));
+  });
+  it("R8 a restarted OpenCode process sends byte-identical history", async () => {
+    const shared = await mkdtemp(join(tmpdir(), "tp-oc-restart-"));
+    const before = await setup({ stateDir: shared });
+    const first = history();
+    await before.hooks["experimental.chat.messages.transform"]!({}, { messages: first });
+    assert.ok(JSON.stringify(first).length < JSON.stringify(history()).length, "precondition: reduced");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const after = await setup({ stateDir: shared });
+    const second = history();
+    await after.hooks["experimental.chat.messages.transform"]!({}, { messages: second });
+    assert.equal(JSON.stringify(second), JSON.stringify(first));
+  });
+  it("R9 a memo save failure still applies the reduction", async () => {
+    const env = await setup();
+    await mkdir(join(env.stateDir, "tokenpilot"), { recursive: true });
+    await writeFile(join(env.stateDir, "tokenpilot", "reduction-memo"), "not a directory");
+    const messages = history();
+    await env.hooks["experimental.chat.messages.transform"]!({}, { messages });
+    assert.ok(JSON.stringify(messages).length < JSON.stringify(history()).length);
+    assert.match(await readFile(adapterLogPath(env.stateDir), "utf8"), /reduction memo save failed/);
   });
 });
 

@@ -113,11 +113,63 @@ function normalizeDisclosedPath(value: unknown): string | undefined {
   return normalized || undefined;
 }
 
+/** Most segments one session memo keeps; the oldest entries are dropped first. */
+export const REDUCTION_MEMO_MAX_SEGMENTS = 1024;
+
+export type ReductionMemoSnapshot = {
+  version: 1;
+  segments: Array<[key: string, text: string]>;
+  disclosed: Array<[path: string, segmentId: string | null]>;
+};
+
 /** Per-session memo of first reduction outputs plus disclosed read paths. */
 export class ReductionMemo {
   private readonly bySegment = new Map<string, string>();
   /** Normalized read path -> id of the segment that first disclosed it (`undefined` if not attributable). */
   private readonly disclosedBy = new Map<string, string | undefined>();
+  /** True when the memo changed since it was last loaded or saved. */
+  dirty = false;
+
+  /**
+   * Serializable form. Host processes restart (`pi -p`, `opencode run --continue`,
+   * crashes); without the persisted memo a restart re-archives every trimmed result
+   * under a new timestamped path and the prefix cache misses from the first one.
+   */
+  toSnapshot(): ReductionMemoSnapshot {
+    return {
+      version: 1,
+      segments: [...this.bySegment],
+      disclosed: [...this.disclosedBy].map(([path, segmentId]) => [path, segmentId ?? null]),
+    };
+  }
+
+  /** Rebuild from a snapshot. Anything malformed is skipped; the result is never dirty. */
+  static fromSnapshot(raw: unknown): ReductionMemo {
+    const memo = new ReductionMemo();
+    const snapshot = raw && typeof raw === "object" ? raw as Partial<ReductionMemoSnapshot> : undefined;
+    if (snapshot?.version !== 1) return memo;
+    for (const entry of Array.isArray(snapshot.segments) ? snapshot.segments : []) {
+      if (Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string") memo.remember(entry[0], entry[1]);
+    }
+    for (const entry of Array.isArray(snapshot.disclosed) ? snapshot.disclosed : []) {
+      if (!Array.isArray(entry)) continue;
+      const path = normalizeDisclosedPath(entry[0]);
+      if (path) memo.disclosedBy.set(path, typeof entry[1] === "string" ? entry[1] : undefined);
+    }
+    memo.dirty = false;
+    return memo;
+  }
+
+  private remember(key: string, text: string): void {
+    this.bySegment.delete(key);
+    this.bySegment.set(key, text);
+    while (this.bySegment.size > REDUCTION_MEMO_MAX_SEGMENTS) {
+      const oldest = this.bySegment.keys().next().value;
+      if (oldest === undefined) break;
+      this.bySegment.delete(oldest);
+    }
+    this.dirty = true;
+  }
 
   /** Every read path disclosed so far this session. */
   get disclosedReadPaths(): string[] | undefined {
@@ -147,6 +199,7 @@ export class ReductionMemo {
       if (!path || this.disclosedBy.has(path)) continue;
       const owner = segments.find((segment) => normalizeDisclosedPath(segment.metadata?.path) === path);
       this.disclosedBy.set(path, owner?.id);
+      this.dirty = true;
     }
   }
 
@@ -164,7 +217,7 @@ export class ReductionMemo {
     if (previous !== undefined && previous !== next && stripArchiveLine(previous) === stripArchiveLine(next)) {
       return { text: previous, reused: true };
     }
-    this.bySegment.set(key, next);
+    if (previous !== next) this.remember(key, next);
     return { text: next, reused: false };
   }
 
@@ -175,6 +228,7 @@ export class ReductionMemo {
   clear(): void {
     this.bySegment.clear();
     this.disclosedBy.clear();
+    this.dirty = false;
   }
 }
 

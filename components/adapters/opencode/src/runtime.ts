@@ -33,6 +33,7 @@ import {
 import { evaluateEvictionReadiness } from "../../shared/canonical/config.js";
 import { createCanonicalEstimator, runCanonicalSurfaceEviction } from "../../shared/canonical/eviction.js";
 import { createFileLogger, failOpen, type AdapterLogger } from "../../shared/canonical/logger.js";
+import { loadReductionMemo, saveReductionMemoIfDirty } from "../../shared/canonical/memo-store.js";
 import { ReductionMemo, passSavedChars } from "../../shared/canonical/reduction.js";
 import { applyOpenCodeChanges, decodeOpenCodeMessages, openCodeSurfaceEntries } from "./codec.js";
 import {
@@ -75,10 +76,11 @@ export class OpenCodeTokenPilotRuntime {
     });
   }
 
-  memoFor(sessionId: string): ReductionMemo {
+  /** Session memo, loaded from stateDir on first use so OpenCode restarts keep the prefix stable. */
+  async memoFor(stateDir: string, sessionId: string): Promise<ReductionMemo> {
     let memo = this.memos.get(sessionId);
     if (!memo) {
-      memo = new ReductionMemo();
+      memo = await loadReductionMemo(stateDir, sessionId);
       this.memos.set(sessionId, memo);
     }
     return memo;
@@ -193,9 +195,11 @@ export class OpenCodeTokenPilotRuntime {
         const reduced = await runCanonicalBeforeCallReduction({
           envelope: createCanonicalEnvelope({ hostId: OPENCODE_HOST_ID, displayName: OPENCODE_DISPLAY_NAME, sessionId, model, messages: canonical }),
           config,
-          memo: this.memoFor(sessionId),
+          memo: await this.memoFor(config.stateDir, sessionId),
         });
         canonical = reduced.messages;
+        await saveReductionMemoIfDirty(config.stateDir, sessionId, await this.memoFor(config.stateDir, sessionId))
+          .catch((error) => this.logger.warn("reduction memo save failed", error));
         savedChars = reduced.summary?.savedChars ?? 0;
         passSaved = passSavedChars(reduced.summary);
       }
