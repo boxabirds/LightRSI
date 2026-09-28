@@ -15,6 +15,8 @@ pnpm component:install:tokenpilot:openclaw
 ```
 
 This command:
+- Builds one release archive containing the OpenClaw plugin and bundled `lightrsi` CLI
+- Installs the CLI in `~/.local/bin` by default, or in `LIGHTRSI_BIN_DIR` when set
 - Updates `~/.openclaw/openclaw.json`
 - Enables the TokenPilot plugin
 - Switches `plugins.slots.contextEngine` to `layered-context`
@@ -103,6 +105,7 @@ Or check per-host:
 
 ```bash
 lightrsi openclaw doctor
+lightrsi openclaw clean --help
 lightrsi codex doctor
 lightrsi claude-code doctor
 lightrsi codex clean --help

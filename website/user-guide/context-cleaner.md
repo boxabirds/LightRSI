@@ -27,7 +27,7 @@ Cleaner reuses task lifecycle and host rewrite capabilities. It is not a command
 
 | Host | User entry point | When an approved clean takes effect |
 | :-- | :-- | :-- |
-| OpenClaw | `/lightrsi clean` or `lightrsi openclaw clean --session <session-id>` | Approval returns `scheduled`; the next ordinary host request performs the canonical rewrite |
+| OpenClaw | `/lightrsi clean`, then its exact-session `lightrsi openclaw clean --require-tty --session <session-id>` launcher | Approval returns `scheduled`; the next ordinary host request performs the canonical rewrite |
 | Codex | `!lightrsi-clean` for the terminal selector; the installed `lightrsi-clean` skill for the MCP form; or `lightrsi codex clean` | Selection is scheduled for the next eligible host request |
 | Claude Code | Installed `lightrsi-clean` analysis skill or `lightrsi claude-code clean` | Selection is scheduled for the next eligible host request |
 | DeepSeek Harness | Native `/tokenpilot-clean` with explicit task IDs | Selection is scheduled for the next ordinary agent request |
@@ -40,11 +40,7 @@ Run these commands from a LightRSI checkout after installing workspace dependenc
 
 ::: code-group
 ```bash [OpenClaw]
-# Shared CLI, if you want to use the terminal commands
-pnpm lightrsi:build
-pnpm lightrsi:install
-
-# Native OpenClaw plugin
+# Native OpenClaw plugin and bundled CLI
 pnpm component:install:tokenpilot:openclaw
 ```
 
@@ -59,7 +55,7 @@ corepack pnpm cleaner:install:claude-code
 
 The Codex and Claude Code installers build the shared CLI, recovery MCP, and selected adapter, then install the Cleaner command skills. Codex also registers the Cleaner MCP server used for its task-selection form. For DeepSeek Harness, install its native plugin and follow the [Cleaner setup](/hosts/deepseek-harness#context-cleaner); it is not registered in the shared CLI.
 
-For the OpenClaw shared CLI, use a Bash environment and ensure `~/.local/bin` (or your `LIGHTRSI_BIN_DIR`) is on `PATH`. Codex and Claude Code installers use `~/.local/bin` by default on Linux/macOS; on Windows they create command launchers and use the npm command directory when it is already on `PATH`.
+The OpenClaw release installer installs the native plugin and bundled CLI from the same archive. Ensure `~/.local/bin` (or your `LIGHTRSI_BIN_DIR`) is on `PATH` on Linux and WSL. The final package also provides the required Windows launchers. Codex and Claude Code installers use `~/.local/bin` by default on Linux/macOS; on Windows they create command launchers and use the npm command directory when it is already on `PATH`.
 
 Start a session through the installed adapter so Cleaner has session context to inspect. See [Install Your First Plugin](/getting-started/install-first-plugin) for host setup and custom configuration paths. Cleaner also needs task lifecycle information to identify eligible tasks; installation alone does not guarantee selectable tasks.
 
@@ -93,7 +89,7 @@ Run the command for your host:
 
 ::: code-group
 ```bash [OpenClaw]
-lightrsi openclaw clean --session <session-id>
+lightrsi openclaw clean --require-tty --session <session-id>
 ```
 
 ```bash [Codex]
@@ -175,7 +171,7 @@ Inside an OpenClaw conversation:
 /lightrsi clean --cancel <plan-id>
 ```
 
-The first command analyzes the mapped current session; provide a session ID if no mapping is available. The native command returns a text plan, not an arrow-key selector. Analysis does not apply a rewrite. Selection only schedules work; send the next ordinary OpenClaw message to execute it and then query the receipt. `/tokenpilot clean` and `/tp clean` are aliases.
+The first command analyzes the mapped current session; provide a session ID if no mapping is available. When selectable tasks exist, the native result prints a same-terminal `lightrsi openclaw clean --require-tty --session <current-session-id>` command bound to that exact conversation. Return to the shell that launched OpenClaw and run it to use Up/Down, Space, Enter, or `q`; the launcher never guesses the most recently active session. The native slash command itself returns a text plan and does not take over OpenClaw's keyboard. Analysis does not apply a rewrite. Selection only schedules work; return to OpenClaw, send the next ordinary message to execute it, and then query the receipt. `/tokenpilot clean` and `/tp clean` are aliases.
 
 The native command can classify pending turns and generate recommendations through OpenClaw's host-managed model completion service. Older hosts without that service fall back to explicitly configured `taskStateEstimator` settings. Do not assume the standalone terminal entrypoint has the same host-managed model access. OpenClaw's canonical eviction backend archives task content before committing the rewrite, which replaces the selected content with a pointer stub or drops it according to the replacement mode. This archive does not make Cleaner cancellation an undo operation.
 

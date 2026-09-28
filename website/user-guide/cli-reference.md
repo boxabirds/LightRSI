@@ -112,16 +112,17 @@ Cleaner is available through the shared CLI for `openclaw`, `codex`, and `claude
 ```bash
 lightrsi <host> clean
 lightrsi <host> clean --session <session-id>
+lightrsi openclaw clean --require-tty --session <session-id>
 lightrsi <host> clean --plan <plan-id> --select <task-id-1>,<task-id-2>
 lightrsi <host> clean --status <plan-id>
 lightrsi <host> clean --cancel <plan-id>
 ```
 
-Analysis does not rewrite context. A terminal may then open a selector; a non-TTY invocation prints the plan without approving it. The `--plan ... --select ...` command explicitly approves those task IDs. Status and cancellation do not rerun analysis, and cancellation cannot undo an applied clean.
+Analysis does not rewrite context. For OpenClaw, `/lightrsi clean` prints an exact-session `--require-tty` launcher when selectable tasks exist; run it from the shell that launched OpenClaw to open the selector without guessing a recent session. A non-TTY invocation prints the plan without approving it. The `--plan ... --select ...` command explicitly approves those task IDs. Status and cancellation do not rerun analysis, and cancellation cannot undo an applied clean.
 
 | Host | In-host entry | Apply timing |
 | :-- | :-- | :-- |
-| OpenClaw | `/lightrsi clean`; use the same plan/select/status/cancel options | Selection returns `scheduled`; the next ordinary request executes it |
+| OpenClaw | `/lightrsi clean`; use its exact-session same-terminal launcher or the same plan/select/status/cancel options | Selection returns `scheduled`; the next ordinary request executes it |
 | Codex | User-entered `!lightrsi-clean` terminal selector or installed `lightrsi-clean` MCP-form skill | Next eligible host request |
 | Claude Code | Installed `lightrsi-clean` skill is analysis-only; approve with explicit plan and task IDs | Next eligible host request |
 | DeepSeek Harness | Native `/tokenpilot-clean` with plan/select/status/cancel options; no shared CLI backend | Scheduled for the next ordinary agent request |

@@ -9,6 +9,8 @@ pnpm component:install:tokenpilot:openclaw
 ```
 
 This command:
+- Builds one release archive containing the plugin and bundled `lightrsi` CLI
+- Installs the CLI in `~/.local/bin` by default, or in `LIGHTRSI_BIN_DIR` when set
 - Updates `~/.openclaw/openclaw.json`
 - Enables the TokenPilot plugin
 - Switches `plugins.slots.contextEngine` to `layered-context`
@@ -94,6 +96,7 @@ lightrsi openclaw doctor
 lightrsi openclaw visual
 lightrsi openclaw mode normal
 lightrsi openclaw session <session-id> report
+lightrsi openclaw clean --require-tty --session <session-id>
 ```
 
 ## Model Selection
@@ -118,7 +121,9 @@ If the session cannot be resolved, use `/lightrsi clean --session <session-id>`.
 /lightrsi clean --cancel <plan-id>
 ```
 
-`/tokenpilot clean` and `/tp clean` are aliases. Explicit approval returns `scheduled` without changing the canonical transcript. Send the next ordinary OpenClaw message to execute the plan, then query `--status` for its result. During execution, the canonical eviction backend archives task content and commits the rewrite. The rewrite uses pointer stubs or drops selected content according to the replacement mode; cancelling a Cleaner plan does not undo an applied rewrite. The standalone entry is `lightrsi openclaw clean --session <session-id>`; in an interactive external terminal it can open a selector after analysis. The native command itself returns a text plan, not an arrow-key selector. Native commands and the CLI share plans and receipts.
+`/tokenpilot clean` and `/tp clean` are aliases. When selectable tasks exist, native analysis prints `lightrsi openclaw clean --require-tty --session <current-session-id>`. Return to the shell that launched OpenClaw and run that exact command to open the shared selector: Up/Down moves, Space toggles, Enter submits, and `q` cancels. The explicit session ID binds the selector to the current conversation; no recent-session guess is used. The native command itself returns a text plan and does not take over OpenClaw's keyboard.
+
+Explicit approval returns `scheduled` without changing the canonical transcript. Return to OpenClaw and send the next ordinary message to execute the plan, then query `--status` for its result. During execution, the canonical eviction backend archives task content and commits the rewrite. The rewrite uses pointer stubs or drops selected content according to the replacement mode; cancelling a Cleaner plan does not undo an applied rewrite. Native commands and the CLI share plans and receipts.
 
 See [Context Cleaner](/user-guide/context-cleaner) for task protection, accounting, and cancellation limits.
 

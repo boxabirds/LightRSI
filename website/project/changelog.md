@@ -1,5 +1,12 @@
 # Changelog
 
+## OpenClaw Cleaner Terminal Entry (2026-09-28)
+
+- `/lightrsi clean` now prints a same-terminal arrow-key launcher bound to the exact current OpenClaw session; it does not guess the most recently active session.
+- The OpenClaw release archive now bundles the native plugin and `lightrsi` CLI, with installation support for Windows, WSL, and Git Bash.
+- Cleaner selection still records `scheduled`; the next ordinary OpenClaw request performs the canonical rewrite, and terminal receipts prevent replay.
+- Release hardening protects shell commands and terminal output from unsafe session IDs and control characters, and preserves the existing configuration if an update fails.
+
 ## Context Cleaner Workflow Updates (2026-09-22)
 
 - DeepSeek Harness exposes native `/tokenpilot-clean` analysis, explicit selection, status, and cancellation. Accepted selections execute on the next ordinary agent request; the shared external CLI is not yet registered.

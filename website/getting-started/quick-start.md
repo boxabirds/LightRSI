@@ -19,8 +19,6 @@ Choose your agent host and run the matching install command:
 
 ::: code-group
 ```bash [OpenClaw]
-pnpm lightrsi:build
-pnpm lightrsi:install
 pnpm component:install:tokenpilot:openclaw
 ```
 
@@ -44,13 +42,13 @@ node --import tsx/esm apps/cli/src/bin.ts plugin --profile web add /absolute/pat
 
 OpenClaw, Codex, and Claude Code installers configure their host integrations. See [Install Your First Plugin](/getting-started/install-first-plugin) for the changes each installer makes.
 
-For OpenClaw, the first two commands separately build and install the shared `lightrsi` CLI used later in this walkthrough; the OpenClaw plugin installer does not install it. The CLI installer is a Bash script, so use a Bash environment (such as WSL on Windows). Its default command directory is `~/.local/bin`; ensure it is on your `PATH`:
+For OpenClaw, the release installer builds one archive containing the plugin and the shared `lightrsi` CLI, installs both, and restarts the gateway. On Linux and WSL the command is installed in `~/.local/bin` by default; ensure that directory is on your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-If you set `LIGHTRSI_BIN_DIR`, add that directory instead. Codex and Claude Code's `cleaner:install:*` commands already build and install the shared CLI.
+If you set `LIGHTRSI_BIN_DIR`, add that directory instead. The installer also supports the Windows launchers used by the final package. Codex and Claude Code's `cleaner:install:*` commands build and install the shared CLI through their own host installers.
 
 DeepSeek Harness installs the `tokenpilot-dsh` Cordis plugin into the selected profile. Replace the archive path with the generated `.tgz` and `web` with your profile. The plugin is **disabled by default**: supply a persistent `stateDir` and estimator and eviction settings, then enable it as described in [Configure and Enable](/hosts/deepseek-harness#configure-and-enable).
 
