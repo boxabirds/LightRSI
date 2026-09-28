@@ -44,6 +44,8 @@ For OpenClaw, Codex, and Claude Code, the host installation flow:
 5. **Registers hooks/MCP/proxy** needed for runtime operation
 6. **Creates backups** of modified files as `.tokenpilot.bak`
 
+For OpenClaw, the release installer builds one archive containing both the native plugin and the bundled `lightrsi` CLI. It installs the CLI in `~/.local/bin` by default (or `LIGHTRSI_BIN_DIR` when set) and provides the launchers required by the supported Windows, WSL, and Git Bash paths.
+
 For DeepSeek Harness, the package registers `tokenpilot-dsh` in the selected profile. Replace the archive path with your generated `.tgz`. The integration is disabled by default and requires a persistent `stateDir` plus estimator and eviction configuration before enabling it. Follow [Configure and Enable](/hosts/deepseek-harness#configure-and-enable); shared runtime modes and proxy installation do not apply.
 
 ## Verify Installation
