@@ -324,6 +324,7 @@ export const toolPayloadTrimPass: ReductionPassHandler = {
         sessionId: turnCtx.sessionId,
         segmentId: segment.id,
         workspaceDir,
+        originalText: segment.text,
       });
 
       const replacementText = reduced.text + buildRecoveryHint({
