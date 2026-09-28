@@ -41,6 +41,9 @@ function validSessionState(value: unknown, sessionId: string): value is {
     && (value.disclosedReadPaths === undefined
       || (Array.isArray(value.disclosedReadPaths)
         && value.disclosedReadPaths.every((path) => typeof path === "string")))
+    && (value.disclosedReadOwners === undefined
+      || (isRecord(value.disclosedReadOwners)
+        && Object.values(value.disclosedReadOwners).every((owner) => owner === null || typeof owner === "string")))
     && optionalCount(value.lastToolInputChars)
     && optionalCount(value.lastToolOutputChars)
     && optionalCount(value.requestChars)

@@ -14,6 +14,8 @@ export type ClaudeCodeSessionSnapshot = {
   latestModel?: string;
   workspaceHint?: string;
   disclosedReadPaths?: string[];
+  /** Normalized read path -> tool_use_id of the read that first disclosed it (null: not attributable). */
+  disclosedReadOwners?: Record<string, string | null>;
   lastHookEvent?: string;
   /** pid of the `claude` process that owns this session, when it could be resolved. */
   hostPid?: number;
@@ -69,6 +71,7 @@ export async function upsertClaudeCodeSessionSnapshot(
     latestModel: patch.latestModel ?? current?.latestModel,
     workspaceHint: patch.workspaceHint ?? current?.workspaceHint,
     disclosedReadPaths: patch.disclosedReadPaths ?? current?.disclosedReadPaths,
+    disclosedReadOwners: patch.disclosedReadOwners ?? current?.disclosedReadOwners,
     lastHookEvent: patch.lastHookEvent ?? current?.lastHookEvent,
     hostPid: patch.hostPid ?? current?.hostPid,
     lastToolName: patch.lastToolName ?? current?.lastToolName,
