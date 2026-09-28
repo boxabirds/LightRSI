@@ -42,6 +42,16 @@ function currentEnvPathOverrides(host: CliHostId): CliHostPathOverrides | undefi
       ? { tokenPilotConfigPath, hostConfigPath, hostAuxConfigPath }
       : undefined;
   }
+  if (host === "pi") {
+    const tokenPilotConfigPath = process.env.TOKENPILOT_PI_CONFIG?.trim();
+    return tokenPilotConfigPath ? { tokenPilotConfigPath } : undefined;
+  }
+  if (host === "opencode") {
+    const tokenPilotConfigPath = process.env.TOKENPILOT_OPENCODE_CONFIG?.trim();
+    const configDir = process.env.TOKENPILOT_OPENCODE_CONFIG_DIR?.trim();
+    const hostConfigPath = configDir ? `${configDir.replace(/[\\/]+$/, "")}/opencode.json` : undefined;
+    return tokenPilotConfigPath || hostConfigPath ? { tokenPilotConfigPath, hostConfigPath } : undefined;
+  }
   return undefined;
 }
 

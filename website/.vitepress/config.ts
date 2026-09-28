@@ -113,6 +113,8 @@ export default defineConfig({
             { text: 'Codex', link: '/hosts/codex' },
             { text: 'Claude Code', link: '/hosts/claude-code' },
             { text: 'DeepSeek Harness', link: '/hosts/deepseek-harness' },
+            { text: 'pi', link: '/hosts/pi' },
+            { text: 'OpenCode', link: '/hosts/opencode' },
           ],
         },
       ],

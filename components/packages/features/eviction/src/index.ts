@@ -9,3 +9,4 @@ export * from "./history-apply.js";
 export * from "./lifecycle-policy-context.js";
 export * from "./lifecycle-planner.js";
 export * from "./context-mutation-plan.js";
+export * from "./canonical-surface/index.js";
