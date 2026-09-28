@@ -11,7 +11,8 @@
  *   I6 re-install keeps the first install's backup path and configCreated flag
  *   I7 the created config carries no credentials
  * renderPiLoader / isTokenPilotPiLoader / loaderTarget
- *   L1 the rendered loader re-exports the bundle's module (default export reachable)
+ *   L1 the loader's module value is the bundle's default factory, with .default === itself
+ *      (pi's jiti import requires a function; regression for a failed live load)
  *   L2 marker detection: ours → true; foreign → false; missing → false
  *   L3 loaderTarget parses the required path; garbage → undefined
  * uninstallPiTokenPilot
@@ -128,12 +129,25 @@ describe("installPiTokenPilot", () => {
 });
 
 describe("loader helpers", () => {
-  it("L1 the loader re-exports the bundle", async () => {
+  it("L1 the loader exports the factory function itself", async () => {
     const f = await fixture();
     await f.install();
-    const loaded = require(f.loaderPath) as { default: () => string; marker: number };
-    assert.equal(loaded.default(), "ok");
-    assert.equal(loaded.marker, 42);
+    const loaded = require(f.loaderPath) as (() => string) & { default: () => string };
+    assert.equal(typeof loaded, "function");
+    assert.equal(loaded(), "ok");
+    assert.equal(loaded.default, loaded);
+  });
+  it("L1b the real built bundle yields the registering factory through the loader", async () => {
+    const f = await fixture();
+    const built = join(__dirname, "..", "dist", "extension.js");
+    if (!existsSync(built)) return; // covered by CI after \`pnpm build\`
+    await f.install({ bundlePath: built });
+    const loaded = require(f.loaderPath) as (pi: unknown) => void;
+    const events: string[] = [];
+    const tools: string[] = [];
+    loaded({ on: (event: string) => { events.push(event); }, registerTool: (tool: { name: string }) => { tools.push(tool.name); } });
+    assert.deepEqual(events.sort(), ["before_agent_start", "context", "session_shutdown", "session_start", "turn_end"]);
+    assert.deepEqual(tools, ["memory_fault_recover"]);
   });
   it("L2 marker detection", async () => {
     const f = await fixture();

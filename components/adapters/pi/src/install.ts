@@ -64,11 +64,20 @@ export function piAdapterRoot(moduleDir = __dirname): string {
   return resolve(moduleDir, "..");
 }
 
+/**
+ * pi imports extensions with jiti (`import(path, { default: true })`) and requires the
+ * resulting value to be the factory function itself (pi 0.87.1 `loadExtensionModule`).
+ * The loader therefore exports the factory as the module value, with `.default`
+ * pointing back at it, so every interop mode yields a function.
+ */
 export function renderPiLoader(bundlePath: string): string {
   return [
     PI_LOADER_MARKER,
     "// Installed by `npm --prefix components/adapters/pi run install:pi`. Remove with `uninstall:pi`.",
-    `module.exports = require(${JSON.stringify(bundlePath)});`,
+    `const bundle = require(${JSON.stringify(bundlePath)});`,
+    "const factory = typeof bundle === \"function\" ? bundle : bundle.default;",
+    "module.exports = factory;",
+    "module.exports.default = factory;",
     "",
   ].join("\n");
 }
