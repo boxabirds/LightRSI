@@ -13,15 +13,11 @@
  * `mapTaskUpdatesToRegistryPatch` + `applySessionTaskRegistryPatch`.
  */
 
-import {
-  applySessionTaskRegistryPatch,
-  type SessionTaskRegistry,
-} from "@lightrsi/history";
-import { mapTaskUpdatesToRegistryPatch, type TaskStateEstimator } from "@lightrsi/eviction";
+import type { SessionTaskRegistry } from "@lightrsi/history";
+import { runCanonicalEvictionCycle, type TaskStateEstimator } from "@lightrsi/eviction";
 
-import { buildDshDeltaView, buildDshRawSemanticSnapshot } from "./session-codec.js";
-import { runTaskStateEstimate } from "./lifecycle-estimator.js";
-import { applySafetyPolicy, type SafetyItem, type TaskState } from "./safety-policy.js";
+import { buildDshRawSemanticSnapshot } from "./session-codec.js";
+import type { SafetyItem } from "./safety-policy.js";
 import {
   applyEvictionTransaction,
   type AppendableSession,
@@ -30,7 +26,7 @@ import {
   type TransactionResult,
 } from "./surface-transaction.js";
 import type { DshLogEventWithMeta, DshMessage } from "./types.js";
-import { assistantCallIds, resultCallId } from "./tool-closure.js";
+import { assistantCallIds, buildToolPairs, resultCallId } from "./tool-closure.js";
 
 /** The session view the cycle needs: durable log + surface + append (R4). */
 export interface CycleSession extends AppendableSession {
@@ -125,28 +121,6 @@ export function describeEffectiveItems(
   return items;
 }
 
-/** Classify an item's task state from the registry (never re-inferred from content). */
-function classify(
-  item: EffectiveItem,
-  registry: SessionTaskRegistry,
-  currentTurn: number,
-): { taskState: TaskState; current: boolean } {
-  if (item.turn >= currentTurn) return { taskState: "current", current: true };
-
-  const turnAbsId = `${registry.sessionId}:t${item.turn}`;
-  const taskIds = registry.turnToTaskIds[turnAbsId] ?? [];
-  const evictable = new Set(registry.evictableTaskIds);
-  const completed = new Set(registry.completedTaskIds);
-  const active = new Set(registry.activeTaskIds);
-
-  // Removable only if EVERY owning task is completed/evictable and none active.
-  if (taskIds.length > 0 && taskIds.every((id) => evictable.has(id) || completed.has(id)) && !taskIds.some((id) => active.has(id))) {
-    return { taskState: "completed", current: false };
-  }
-  if (taskIds.some((id) => active.has(id))) return { taskState: "active", current: false };
-  return { taskState: "unresolved", current: false };
-}
-
 function currentTurnOf(events: readonly DshLogEventWithMeta[]): number {
   let turn = 0;
   for (const e of events) {
@@ -156,7 +130,11 @@ function currentTurnOf(events: readonly DshLogEventWithMeta[]): number {
   return turn;
 }
 
-/** Run one eviction cycle. Registry in → updated registry + transaction result out. */
+/**
+ * Run one eviction cycle. Registry in → updated registry + transaction result out.
+ * The cycle itself is the shared `runCanonicalEvictionCycle`; this wrapper
+ * supplies DSH's snapshot, surface items, tool pairs, and native transaction.
+ */
 export async function runDshEvictionCycle(params: {
   session: CycleSession;
   registry: SessionTaskRegistry;
@@ -168,123 +146,56 @@ export async function runDshEvictionCycle(params: {
   allowSurfaceMutation?: boolean;
   persistRegistry?: (registry: SessionTaskRegistry, expectedVersion: number) => void | Promise<void>;
 }): Promise<EvictionCycleResult> {
-  const { session, estimator, computeRevision } = params;
+  const { session, computeRevision } = params;
 
   const snapshot = buildDshRawSemanticSnapshot(session.id, session.events, {
     surfaceEventSeqs: session.surface.nodes,
   });
-  const delta = buildDshDeltaView(snapshot, { fromTurnSeqExclusive: params.registry.lastProcessedTurnSeq });
-  let registry = params.registry;
-  let registryPersistedBeforeMutation = false;
-  let registryExpectedVersion = params.registry.version;
-  if (delta.coveredTurnAbsIds.length > 0) {
-    // Estimator → registry update (shared mapper; no registry logic reinvented).
-    const output = await runTaskStateEstimate(estimator, { registry: params.registry, delta });
-    const { patch } = mapTaskUpdatesToRegistryPatch({
-      registry: params.registry,
-      updates: output.taskUpdates,
-      coveredTurnAbsIds: delta.coveredTurnAbsIds,
-      toTurnSeqInclusive: delta.toTurnSeqInclusive,
-    });
-    registry = applySessionTaskRegistryPatch(params.registry, patch);
-    // Registry CAS is a precondition for canonical mutation. Persist task state
-    // first, but keep the watermark behind until the surface transaction lands;
-    // otherwise a partial append would permanently hide its unprocessed tail.
-    const pendingRegistry = {
-      ...registry,
-      lastProcessedTurnSeq: params.registry.lastProcessedTurnSeq,
-    };
-    await params.persistRegistry?.(pendingRegistry, params.registry.version);
-    registry = pendingRegistry;
-    registryPersistedBeforeMutation = params.persistRegistry !== undefined;
-    registryExpectedVersion = pendingRegistry.version;
-  }
-
-  // Classify effective items against the updated registry, then R3 safety filter.
   const currentTurn = currentTurnOf(session.events);
   const effective = describeEffectiveItems(session.events, session.surface.nodes);
   const bySeq = new Map(effective.map((it) => [it.seq, it]));
-  const safetyItems: SafetyItem[] = effective.map((it) => {
-    const c = classify(it, registry, currentTurn);
-    return {
+  const evictionId = params.evictionId ?? `dsh-evict-${session.id}-${currentTurn}`;
+
+  const cycle = await runCanonicalEvictionCycle<number, TransactionResult>({
+    snapshot,
+    registry: params.registry,
+    estimator: params.estimator,
+    items: effective.map((it) => ({
       sourceEventSeq: it.seq,
+      turn: it.turn,
       kind: it.kind,
-      taskState: c.taskState,
-      current: c.current,
       callIds: it.callIds,
       chars: it.chars,
-    };
+    })),
+    effectiveSeqs: session.surface.nodes,
+    pairs: buildToolPairs(session.events, session.surface.nodes),
+    currentTurn,
+    minBlockChars: params.minBlockChars,
+    allowSurfaceMutation: params.allowSurfaceMutation,
+    compareSeqs: (a, b) => a - b,
+    persistRegistry: params.persistRegistry,
+    emptyResult,
+    apply(evictSeqs) {
+      // Build the plan and apply it as a canonical transaction (R4).
+      const targets: EvictionTarget[] = evictSeqs.map((seq) => {
+        const it = bySeq.get(seq);
+        if (!it) throw new Error(`eviction target ${seq} is not a current surface item`);
+        return buildEvictionTarget(it, evictionId);
+      });
+      const plan: EvictionPlan = {
+        evictionId,
+        revision: computeRevision(session),
+        targets,
+      };
+      return applyEvictionTransaction(session, plan, computeRevision);
+    },
   });
-
-  const decision = applySafetyPolicy(
-    safetyItems,
-    session.surface.nodes,
-    session.events,
-    params.minBlockChars ?? 0,
-  );
-  if (decision.evictSeqs.length === 0) {
-    registry = { ...registry, lastProcessedTurnSeq: delta.toTurnSeqInclusive };
-    if (registryPersistedBeforeMutation && params.persistRegistry) {
-      await params.persistRegistry(registry, registryExpectedVersion);
-    }
-    return {
-      registry,
-      result: emptyResult(),
-      registryPersisted: true,
-      status: delta.coveredTurnAbsIds.length === 0 ? "no-delta" : "empty",
-    };
-  }
-
-  // Context Cleaner needs the same completed-task registry as automatic
-  // eviction, but a Cleaner-only profile must never remove context before the
-  // user makes an explicit selection.  Advance the durable lifecycle
-  // watermark after a successful estimate while leaving DSH's surface intact.
-  if (params.allowSurfaceMutation === false) {
-    registry = { ...registry, lastProcessedTurnSeq: delta.toTurnSeqInclusive };
-    if (registryPersistedBeforeMutation && params.persistRegistry) {
-      await params.persistRegistry(registry, registryExpectedVersion);
-    }
-    return {
-      registry,
-      result: emptyResult(),
-      registryPersisted: true,
-      status: "empty",
-    };
-  }
-
-  // Build the plan and apply it as a canonical transaction (R4).
-  const targets: EvictionTarget[] = decision.evictSeqs.map((seq) => {
-    const it = bySeq.get(seq);
-    if (!it) throw new Error(`eviction target ${seq} is not a current surface item`);
-    return buildEvictionTarget(it, params.evictionId ?? `dsh-evict-${session.id}-${currentTurn}`);
-  });
-  const plan: EvictionPlan = {
-    evictionId: params.evictionId ?? `dsh-evict-${session.id}-${currentTurn}`,
-    revision: computeRevision(session),
-    targets,
-  };
-  const result = applyEvictionTransaction(session, plan, computeRevision);
-
-  const shouldAdvanceWatermark = result.status === "committed";
-  const finalRegistry = shouldAdvanceWatermark
-    ? { ...registry, lastProcessedTurnSeq: delta.toTurnSeqInclusive }
-    : registry;
-  let registryPersisted = true;
-  if (shouldAdvanceWatermark && registryPersistedBeforeMutation && params.persistRegistry) {
-    try {
-      await params.persistRegistry(finalRegistry, registryExpectedVersion);
-    } catch {
-      // Replacements already landed. Keep the in-memory result truthful and let
-      // the next cycle recover the stale watermark from the canonical surface.
-      registryPersisted = false;
-    }
-  }
 
   return {
-    registry: finalRegistry,
-    result,
-    registryPersisted,
-    status: result.status === "committed" || result.status === "partial" ? "applied" : "deferred",
+    registry: cycle.registry,
+    result: cycle.result,
+    registryPersisted: cycle.registryPersisted,
+    status: cycle.status,
   };
 }
 
