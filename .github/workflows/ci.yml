@@ -79,3 +79,34 @@ jobs:
 
       - name: Test OpenCode adapter
         run: pnpm --dir components/adapters/opencode test
+
+      - name: Test lightrsi CLI
+        run: pnpm --dir components/products/cli test
+
+  # The CLI ships Windows-specific code (console screen buffer, command launchers).
+  # This job runs its suite on Windows; the rest of CI stays on Linux.
+  cli-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build lightrsi CLI
+        run: pnpm --dir components/products/cli build
+
+      - name: Test lightrsi CLI
+        run: pnpm --dir components/products/cli test
