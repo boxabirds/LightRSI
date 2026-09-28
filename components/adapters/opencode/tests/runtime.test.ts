@@ -17,7 +17,8 @@
  *   Y6 malformed output (no system array / non-string) → untouched, no throw
  * experimental.chat.messages.transform
  *   R1 large tool output → only that part is replaced (cloned); text equals the shared
- *      reduction run directly; latest-session ref and a turn binding are written
+ *      reduction run directly; latest-session ref and a turn binding (total + per-pass
+ *      savings) are written
  *   R2 repeated call on a fresh copy of the same history → byte-identical output (memo)
  *   R3 small history → no replacements (array elements keep identity)
  *   R4 no session id → untouched
@@ -186,8 +187,9 @@ describe("experimental.chat.messages.transform", () => {
     assert.equal(strip(output), strip(directText));
     assert.equal(((original[1]!.parts[0] as OcToolPart).state as { output: string }).output, BIG, "stored part mutated");
     assert.equal(JSON.parse(await readFile(latestSessionPath(env.stateDir), "utf8")).sessionId, S);
-    const bindings = await loadRecentTurnBindings<{ reductionSavedChars: number }>(env.stateDir, S);
+    const bindings = await loadRecentTurnBindings<{ reductionSavedChars: number; reductionPassSavedChars: Record<string, number> }>(env.stateDir, S);
     assert.equal(bindings.at(-1)?.reductionSavedChars, BIG.length - output.length);
+    assert.ok((bindings.at(-1)?.reductionPassSavedChars.tool_payload_trim ?? 0) > 0);
   });
   it("R2 a repeated call is byte-identical", async () => {
     const env = await setup();

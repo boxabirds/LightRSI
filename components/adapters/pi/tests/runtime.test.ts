@@ -26,7 +26,7 @@
  *   C1 disabled → undefined
  *   C2 nothing to reduce → undefined (pi keeps its own array)
  *   C3 large tool output → only that toolResult is replaced; text equals the shared
- *      reduction run directly; a turn binding is recorded
+ *      reduction run directly; a turn binding records total and per-pass savings
  *   C4 a second identical request returns byte-identical messages (memo)
  *   C5 user target → first real user message prefixed request-locally; input untouched
  *   C6 reduction off but prefix pending → only the prefix is applied
@@ -301,8 +301,9 @@ describe("context", () => {
     });
     const directText = ((direct.envelope.messages[2]!.content as Array<{ text: string }>)[0]!).text;
     assert.equal(stripArchive(text), stripArchive(directText));
-    const bindings = await loadRecentTurnBindings<{ reductionSavedChars: number }>(env.dir, SESSION);
+    const bindings = await loadRecentTurnBindings<{ reductionSavedChars: number; reductionPassSavedChars: Record<string, number> }>(env.dir, SESSION);
     assert.equal(bindings.at(-1)?.reductionSavedChars, BIG.length - text.length);
+    assert.ok((bindings.at(-1)?.reductionPassSavedChars.tool_payload_trim ?? 0) > 0);
   });
   it("C4 a repeated request is byte-identical", async () => {
     const env = await started();

@@ -33,6 +33,10 @@
  *   R8 memo off, or stableArchiveHints=false → second run differs only in Archive line
  *   R9 trimmed content is recoverable through the shared resolveMemoryFaultRecover
  *   R10 non-text blocks (images, tool_call) and message metadata are preserved
+ * passSavedChars(summary)
+ *   PS1 undefined summary → {}
+ *   PS2 only passes that changed text with savedChars > 0 are listed
+ *   PS3 repeated pass ids are summed
  */
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
@@ -51,6 +55,7 @@ import { normalizeCanonicalAdapterConfig, type CanonicalAdapterConfig } from "..
 import {
   ReductionMemo,
   buildCanonicalReductionTurnContext,
+  passSavedChars,
   canonicalEnabledPassIds,
   canonicalPassOptions,
   prepareCanonicalReductionInputs,
@@ -295,5 +300,22 @@ describe("reduceCanonicalEnvelope", () => {
     const block = (out.envelope.messages[2]?.content as Array<Record<string, unknown>>)[0];
     assert.equal(block?.status, "error");
     assert.equal(block?.toolCallId, "c1");
+  });
+});
+
+describe("passSavedChars", () => {
+  const effect = (id: string, changed: boolean, savedChars: number) => ({ id, changed, beforeChars: 100, afterChars: 100 - savedChars, savedChars });
+  const summary = (passEffects: ReturnType<typeof effect>[]) => ({
+    changedMessages: 0, changedBlocks: 0, savedChars: 0, beforeChars: 0, afterChars: 0, report: [], passEffects,
+    diagnostics: { messageCount: 0, toolLikeMessages: 0, candidateSegments: 0, candidateChars: 0 },
+  });
+  it("PS1 an undefined summary yields an empty record", () => {
+    assert.deepEqual(passSavedChars(undefined), {});
+  });
+  it("PS2 only changed passes with savings are listed", () => {
+    assert.deepEqual(passSavedChars(summary([effect("tool_payload_trim", true, 40), effect("html_slimming", false, 0), effect("read_state_compaction", true, 0)])), { tool_payload_trim: 40 });
+  });
+  it("PS3 repeated pass ids are summed", () => {
+    assert.deepEqual(passSavedChars(summary([effect("a", true, 10), effect("a", true, 5)])), { a: 15 });
   });
 });

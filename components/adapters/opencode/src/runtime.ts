@@ -33,7 +33,7 @@ import {
 import { evaluateEvictionReadiness } from "../../shared/canonical/config.js";
 import { createCanonicalEstimator, runCanonicalSurfaceEviction } from "../../shared/canonical/eviction.js";
 import { createFileLogger, failOpen, type AdapterLogger } from "../../shared/canonical/logger.js";
-import { ReductionMemo } from "../../shared/canonical/reduction.js";
+import { ReductionMemo, passSavedChars } from "../../shared/canonical/reduction.js";
 import { applyOpenCodeChanges, decodeOpenCodeMessages, openCodeSurfaceEntries } from "./codec.js";
 import {
   defaultTokenPilotOpenCodeConfigPath,
@@ -188,6 +188,7 @@ export class OpenCodeTokenPilotRuntime {
       }
 
       let savedChars = 0;
+      let passSaved: Record<string, number> = {};
       if (config.modules.reduction) {
         const reduced = await runCanonicalBeforeCallReduction({
           envelope: createCanonicalEnvelope({ hostId: OPENCODE_HOST_ID, displayName: OPENCODE_DISPLAY_NAME, sessionId, model, messages: canonical }),
@@ -196,12 +197,13 @@ export class OpenCodeTokenPilotRuntime {
         });
         canonical = reduced.messages;
         savedChars = reduced.summary?.savedChars ?? 0;
+        passSaved = passSavedChars(reduced.summary);
       }
 
       const changed = applyOpenCodeChanges(messages, decoded, canonical);
       await writeLatestSessionRef(config.stateDir, sessionId, new Date().toISOString());
       if (savedChars > 0) {
-        await appendRecentTurnBinding(config.stateDir, { sessionId, updatedAt: new Date().toISOString(), model, reductionSavedChars: savedChars, changedMessages: changed })
+        await appendRecentTurnBinding(config.stateDir, { sessionId, updatedAt: new Date().toISOString(), model, reductionSavedChars: savedChars, reductionPassSavedChars: passSaved, changedMessages: changed })
           .catch((error) => this.logger.warn("turn binding failed", error));
       }
     }, undefined);

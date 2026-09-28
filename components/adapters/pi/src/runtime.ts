@@ -36,7 +36,7 @@ import {
   type CanonicalSurfaceEntry,
 } from "../../shared/canonical/eviction.js";
 import { createFileLogger, failOpen, type AdapterLogger } from "../../shared/canonical/logger.js";
-import { ReductionMemo } from "../../shared/canonical/reduction.js";
+import { ReductionMemo, passSavedChars } from "../../shared/canonical/reduction.js";
 import {
   decodePiMessages,
   encodePiMessages,
@@ -236,6 +236,7 @@ export class PiTokenPilotRuntime {
             reductionSavedChars: reduced.summary?.savedChars,
             reductionChangedBlocks: reduced.summary?.changedBlocks,
             memoReusedSegments: reduced.summary?.memoReusedSegments,
+            reductionPassSavedChars: passSavedChars(reduced.summary),
           }).catch((error) => this.logger.warn("turn binding failed", error));
         }
       }

@@ -624,3 +624,12 @@ export async function reduceCanonicalEnvelope(params: {
     },
   };
 }
+
+/** Characters removed per reduction pass in one request (only passes that changed text). */
+export function passSavedChars(summary: CanonicalReductionSummary | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const effect of summary?.passEffects ?? []) {
+    if (effect.changed && effect.savedChars > 0) out[effect.id] = (out[effect.id] ?? 0) + effect.savedChars;
+  }
+  return out;
+}
