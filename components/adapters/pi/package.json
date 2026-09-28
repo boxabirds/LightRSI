@@ -1,0 +1,44 @@
+{
+  "name": "@lightrsi/pi-adapter",
+  "version": "0.1.0-beta.1",
+  "description": "TokenPilot adapter for the pi coding agent (in-process extension).",
+  "lightrsi": {
+    "role": "adapter"
+  },
+  "main": "dist/extension.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zjunlp/LightRSI.git",
+    "directory": "components/adapters/pi"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@lightrsi/artifact-store": "workspace:*",
+    "@lightrsi/eviction": "workspace:*",
+    "@lightrsi/history": "workspace:*",
+    "@lightrsi/host-adapter": "workspace:*",
+    "@lightrsi/kernel": "workspace:*",
+    "@lightrsi/mcp": "workspace:*",
+    "@lightrsi/product-surface": "workspace:*",
+    "@lightrsi/reduction": "workspace:*",
+    "@lightrsi/stabilizer": "workspace:*",
+    "@lightrsi/tokenpilot": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsx build.ts",
+    "doctor:pi": "node --import tsx scripts/doctor-pi.ts",
+    "install:pi": "node --import tsx scripts/install-pi.ts",
+    "uninstall:pi": "node --import tsx scripts/uninstall-pi.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "keywords": ["pi", "tokenpilot", "context-management", "extension"]
+}

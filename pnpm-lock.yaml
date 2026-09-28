@@ -195,6 +195,49 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  components/adapters/pi:
+    dependencies:
+      '@lightrsi/artifact-store':
+        specifier: workspace:*
+        version: link:../../packages/foundation/artifact-store
+      '@lightrsi/eviction':
+        specifier: workspace:*
+        version: link:../../packages/features/eviction
+      '@lightrsi/history':
+        specifier: workspace:*
+        version: link:../../packages/foundation/history
+      '@lightrsi/host-adapter':
+        specifier: workspace:*
+        version: link:../../packages/foundation/host-adapter
+      '@lightrsi/kernel':
+        specifier: workspace:*
+        version: link:../../packages/foundation/kernel
+      '@lightrsi/mcp':
+        specifier: workspace:*
+        version: link:../../products/mcp
+      '@lightrsi/product-surface':
+        specifier: workspace:*
+        version: link:../../packages/foundation/product-surface
+      '@lightrsi/reduction':
+        specifier: workspace:*
+        version: link:../../packages/features/reduction
+      '@lightrsi/stabilizer':
+        specifier: workspace:*
+        version: link:../../packages/features/stabilizer
+      '@lightrsi/tokenpilot':
+        specifier: workspace:*
+        version: link:../../presets/tokenpilot
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.10
+        version: 0.25.12
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   components/packages/features/cleaner:
     dependencies:
       '@lightrsi/history':
