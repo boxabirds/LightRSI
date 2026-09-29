@@ -50,8 +50,9 @@ test("A3 without originalText the name stays timestamped", () => {
   assert.ok(Number(match[1]) >= before);
 });
 
-test("A4 unsafe segment ids are sanitized", () => {
-  const { archivePath, archiveDir } = buildArchiveLocation({ sessionId: "s", segmentId: "../../etc/passwd", archiveDir: "/a", originalText: "x" });
+test("A4 unsafe segment ids are sanitized", async () => {
+  const nativeArchiveDir = await mkdtemp(join(tmpdir(), "archive-a4-"));
+  const { archivePath, archiveDir } = buildArchiveLocation({ sessionId: "s", segmentId: "../../etc/passwd", archiveDir: nativeArchiveDir, originalText: "x" });
   assert.equal(dirname(archivePath), archiveDir);
   assert.ok(!basename(archivePath).includes("/"));
 });
