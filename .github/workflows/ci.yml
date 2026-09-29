@@ -56,6 +56,9 @@ jobs:
       - name: Test history package
         run: pnpm --dir components/packages/foundation/history test
 
+      - name: Test artifact store package
+        run: pnpm --dir components/packages/foundation/artifact-store test
+
       - name: Test TokenPilot preset
         run: pnpm --dir components/presets/tokenpilot test
 
@@ -67,6 +70,9 @@ jobs:
 
       - name: Test eviction package
         run: pnpm --dir components/packages/features/eviction test
+
+      - name: Test reduction package
+        run: pnpm --dir components/packages/features/reduction test
 
       - name: Test DeepSeek Harness adapter
         run: pnpm --dir components/adapters/deepseek-harness test
