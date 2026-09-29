@@ -50,6 +50,22 @@ class FakeScreenBufferProcess extends EventEmitter implements WindowsScreenBuffe
 
 }
 
+/**
+ * The ready and restore timeouts are unref'd so they never hold the CLI open on
+ * their own; in real use the PowerShell helper process keeps the event loop alive
+ * while they run. The fake helper holds nothing, so a test that waits for one of
+ * those timeouts must hold the loop open itself, or the loop drains and the test
+ * runner cancels the test (and every test queued after it).
+ */
+async function withEventLoopHeld<T>(work: Promise<T>): Promise<T> {
+  const keepAlive = setInterval(() => undefined, 1_000);
+  try {
+    return await work;
+  } finally {
+    clearInterval(keepAlive);
+  }
+}
+
 test("Windows screen-buffer helper owns and restores a separate console buffer", () => {
   const script = windowsConsoleScreenBufferScript(4321);
 
@@ -161,7 +177,7 @@ test("Windows console output ignores a late READY after startup cancellation", a
     restoreTimeoutMs: 100,
   });
 
-  assert.equal(await output.ready(), false);
+  assert.equal(await withEventLoopHeld(output.ready()), false);
   const closing = output.close();
   helper.stdout.emit("data", "READY\t80\t30\nRESTORED\n");
   await closing;
@@ -292,6 +308,6 @@ test("Windows console output recovers the guarded Codex TUI before a forced help
   helper.stdout.emit("data", "GUARD\t6789\nREADY\t80\t30\n");
   assert.equal(await ready, true);
 
-  await output.close();
+  await withEventLoopHeld(output.close());
   assert.deepEqual(events, ["resume:6789", "kill"]);
 });
