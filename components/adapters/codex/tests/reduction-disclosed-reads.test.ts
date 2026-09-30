@@ -16,7 +16,10 @@
  *      null owner → carried
  * recordDisclosedReadOwners
  *   O3 no reported paths → unchanged; a new path is owned by the call_id of the first
- *      segment with that path; no matching segment → null; a known path keeps its owner
+ *      eligible trimmed read with that path; no matching segment → null; a known path
+ *      keeps its owner
+ *   O4 a non-read tool using the same path cannot become the disclosure owner
+ *   O5 owners not present in the bounded reported path set are discarded
  * applyBeforeCallReductionToPayload + snapshot (as the proxy persists it)
  *   D1 the same read still in history on the next request stays trimmed and
  *      byte-identical (regression)
@@ -26,6 +29,8 @@
  *      is trimmed
  *   D4 owners round-trip through upsertCodexSessionSnapshot and survive
  *      mergeCodexSessionSnapshot
+ *   D5 when two reads share a path, ownership follows the read actually trimmed;
+ *      removing an earlier untrimmed read does not make the retained read expand
  */
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
@@ -54,9 +59,13 @@ async function setup() {
 
 const user = (text: string) => ({ role: "user", content: [{ type: "input_text", text }] });
 function readTurn(callId: string) {
+  return readTurnWithContent(callId, CODE);
+}
+
+function readTurnWithContent(callId: string, output: string) {
   return [
     { type: "function_call", call_id: callId, name: "Read", arguments: JSON.stringify({ path: PATH }) },
-    { type: "function_call_output", call_id: callId, output: CODE },
+    { type: "function_call_output", call_id: callId, output },
   ];
 }
 const shellTurn = [
@@ -96,15 +105,49 @@ test("O3 recordDisclosedReadOwners", () => {
     { id: "input-4-output", kind: "volatile", text: "x", priority: 0, metadata: { path: "/repo/a.ts" } },
   ] as ContextSegment[];
   const bindings = [
-    { segmentId: "input-2-output", itemIndex: 2, field: "output" as const, callId: "call_first" },
-    { segmentId: "input-4-output", itemIndex: 4, field: "output" as const, callId: "call_second" },
+    { segmentId: "input-2-output", itemIndex: 2, field: "output" as const, toolName: "Read", callId: "call_first" },
+    { segmentId: "input-4-output", itemIndex: 4, field: "output" as const, toolName: "Read", callId: "call_second" },
   ];
   const known = { "/known": "call_old" };
-  assert.equal(recordDisclosedReadOwners(known, undefined, segments, bindings), known);
+  assert.equal(recordDisclosedReadOwners(known, undefined, segments, bindings, new Set()), known);
   assert.deepEqual(
-    recordDisclosedReadOwners(known, ["/repo/a.ts", "/elsewhere.ts", "/known"], segments, bindings),
+    recordDisclosedReadOwners(
+      known,
+      ["/repo/a.ts", "/elsewhere.ts", "/known"],
+      segments,
+      bindings,
+      new Set(["input-2-output", "input-4-output"]),
+    ),
     { "/known": "call_old", "/repo/a.ts": "call_first", "/elsewhere.ts": null },
   );
+});
+
+test("O4 recordDisclosedReadOwners assigns a same-path disclosure only to a read", () => {
+  const segments = [
+    { id: "write-output", kind: "volatile", text: "wrote 1 byte", priority: 0, metadata: { path: "/repo/a.ts" } },
+    { id: "read-output", kind: "volatile", text: "file contents", priority: 0, metadata: { path: "/repo/a.ts" } },
+  ] as ContextSegment[];
+  const bindings = [
+    { segmentId: "write-output", itemIndex: 2, field: "output" as const, toolName: "Write", callId: "call_write" },
+    { segmentId: "read-output", itemIndex: 4, field: "output" as const, toolName: "Read", callId: "call_read" },
+  ];
+  assert.deepEqual(
+    recordDisclosedReadOwners(undefined, ["/repo/a.ts"], segments, bindings, new Set(["write-output", "read-output"])),
+    { "/repo/a.ts": "call_read" },
+  );
+});
+
+test("O5 recordDisclosedReadOwners keeps only the bounded reported path set", () => {
+  const existing = Object.fromEntries(
+    Array.from({ length: 130 }, (_, index) => [`/repo/file-${index}.ts`, `call_${index}`]),
+  );
+  const reported = Array.from({ length: 128 }, (_, index) => `/repo/file-${index + 2}.ts`);
+  const owners = recordDisclosedReadOwners(existing, reported, [], [], new Set());
+  assert.equal(Object.keys(owners ?? {}).length, 128);
+  assert.equal(owners?.["/repo/file-0.ts"], undefined);
+  assert.equal(owners?.["/repo/file-1.ts"], undefined);
+  assert.equal(owners?.["/repo/file-2.ts"], "call_2");
+  assert.equal(owners?.["/repo/file-129.ts"], "call_129");
 });
 
 test("D1 the same read still in history stays trimmed on the next request", async () => {
@@ -138,4 +181,19 @@ test("D4 owners round-trip through the snapshot and survive a session merge", as
   assert.deepEqual((await loadCodexSessionSnapshot(env.stateDir, "d4-source"))?.disclosedReadOwners, { [PATH]: "call_r1" });
   const merged = await mergeCodexSessionSnapshot(env.stateDir, "d4-source", "d4-target");
   assert.deepEqual(merged?.disclosedReadOwners, { [PATH]: "call_r1" });
+});
+
+test("D5 ownership follows the same-path read actually trimmed", async () => {
+  const env = await setup();
+  const first = await request(env, "d5", [user("read it twice"), ...readTurnWithContent("call_short", "not found"), ...readTurn("call_long")]);
+  const firstLongOutput = String(first.payload.input[4].output);
+  assert.ok(firstLongOutput.length < CODE.length, "precondition: only the long read is trimmed");
+  assert.deepEqual(first.summary.disclosedReadOwners, { [PATH]: "call_long" });
+
+  const second = await request(env, "d5", [user("continue after history compaction"), ...readTurn("call_long")]);
+  const secondLongOutput = String(second.payload.input[2].output);
+  assert.ok(secondLongOutput.length < CODE.length, "the retained long read must not expand back to full content");
+  // The segment id is positional, so the content-derived archive path moves with the read.
+  const normalizeArchiveLocation = (text: string) => text.replace(/^Archive: .+$/m, "Archive: <location>");
+  assert.equal(normalizeArchiveLocation(secondLongOutput), normalizeArchiveLocation(firstLongOutput));
 });

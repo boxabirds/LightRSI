@@ -119,24 +119,35 @@ export function carriedDisclosedReadPaths(
   return carried.length > 0 ? carried : undefined;
 }
 
-/** Add newly disclosed paths, owned by the call_id of the first segment with that path; known paths keep their owner. */
+/**
+ * Rebuild owners for the reported path set; new paths belong to a matching read
+ * actually trimmed in this request.
+ */
 export function recordDisclosedReadOwners(
   owners: DisclosedReadOwners | undefined,
   reportedPaths: unknown,
   segments: readonly ContextSegment[],
   bindings: readonly SegmentBinding[],
+  trimmedSegmentIds: ReadonlySet<string>,
 ): DisclosedReadOwners | undefined {
   const paths = normalizeDisclosedReadPaths(reportedPaths);
   if (!paths) return owners;
-  const next: DisclosedReadOwners = { ...(owners ?? {}) };
-  const callIdBySegment = new Map(bindings.map((binding) => [binding.segmentId, binding.callId]));
+  const next: DisclosedReadOwners = {};
+  const bindingBySegment = new Map(bindings.map((binding) => [binding.segmentId, binding]));
   for (const path of paths) {
-    if (path in next) continue;
+    if (owners && Object.hasOwn(owners, path)) {
+      next[path] = owners[path] ?? null;
+      continue;
+    }
     const owner = segments.find((segment) => {
+      if (!trimmedSegmentIds.has(segment.id)) return false;
+      const binding = bindingBySegment.get(segment.id);
+      const toolName = binding?.toolName?.trim().toLowerCase();
+      if (toolName !== "read" && toolName !== "file_read") return false;
       const segmentPath = (segment.metadata as Record<string, unknown> | undefined)?.path;
       return typeof segmentPath === "string" && segmentPath.trim().toLowerCase() === path;
     });
-    next[path] = (owner && callIdBySegment.get(owner.id)) || null;
+    next[path] = (owner && bindingBySegment.get(owner.id)?.callId) || null;
   }
   return Object.keys(next).length > 0 ? next : undefined;
 }
@@ -760,9 +771,13 @@ export async function applyBeforeCallReductionToPayload(params: {
   const { turnCtx: reducedCtx, report } = await runReductionBeforeCall({ turnCtx, passes });
   const passEffects = summarizePassEffects(report);
   const changedSegmentIds = new Set<string>();
+  const trimmedSegmentIds = new Set<string>();
   for (const entry of report) {
     if (!entry.changed) continue;
-    for (const id of entry.touchedSegmentIds ?? []) changedSegmentIds.add(id);
+    for (const id of entry.touchedSegmentIds ?? []) {
+      changedSegmentIds.add(id);
+      if (entry.id === "tool_payload_trim") trimmedSegmentIds.add(id);
+    }
   }
   if (changedSegmentIds.size === 0) {
     return {
@@ -775,7 +790,7 @@ export async function applyBeforeCallReductionToPayload(params: {
       passEffects,
       diagnostics: built.diagnostics,
       disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
-      disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings),
+      disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings, trimmedSegmentIds),
       skippedReason: "pipeline_no_effect",
     };
   }
@@ -834,7 +849,7 @@ export async function applyBeforeCallReductionToPayload(params: {
     diagnostics: built.diagnostics,
     visualSegments,
     disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
-    disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings),
+    disclosedReadOwners: recordDisclosedReadOwners(disclosedReadOwners, reducedCtx.metadata?.disclosedReadPaths, built.turnCtx.segments, built.bindings, trimmedSegmentIds),
   };
 }
 
