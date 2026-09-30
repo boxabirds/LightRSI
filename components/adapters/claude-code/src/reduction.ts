@@ -16,6 +16,7 @@ type ClaudeSegmentBinding = {
   blockIndex?: number;
   field: "content" | "text";
   toolName?: string;
+  toolUseId?: string;
 };
 
 type ClaudeReductionInstruction = {
@@ -80,8 +81,12 @@ export type ClaudeReductionSummary = {
   diagnostics: ClaudeReductionDiagnostics;
   visualSegments?: ClaudeReductionVisualSegment[];
   disclosedReadPaths?: string[];
+  /** Normalized read path -> tool_use_id of the read that first disclosed it (null: not attributable). */
+  disclosedReadOwners?: DisclosedReadOwners;
   skippedReason?: string;
 };
+
+export type DisclosedReadOwners = Record<string, string | null>;
 
 function normalizeDisclosedReadPaths(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -92,6 +97,83 @@ function normalizeDisclosedReadPaths(value: unknown): string[] | undefined {
     if (normalized) next.add(normalized);
   }
   return next.size > 0 ? [...next] : undefined;
+}
+
+export function normalizeDisclosedReadOwners(value: unknown): DisclosedReadOwners | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const next: DisclosedReadOwners = {};
+  for (const [path, owner] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = path.trim().toLowerCase();
+    if (!normalized) continue;
+    next[normalized] = typeof owner === "string" && owner ? owner : null;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Paths to hand the pass as "already disclosed". Claude Code resends the whole
+ * history every request, so a disclosing read that is still in it is re-detected by
+ * the pass itself. Carrying its path too would make the pass treat that same read as
+ * a repeat and send it untrimmed, which breaks the prompt cache. Only paths whose
+ * disclosing read has left the history (compaction, a new session branch) are carried.
+ */
+export function carriedDisclosedReadPaths(
+  owners: DisclosedReadOwners | undefined,
+  presentToolUseIds: ReadonlySet<string>,
+): string[] | undefined {
+  if (!owners) return undefined;
+  const carried = Object.entries(owners)
+    .filter(([, owner]) => owner === null || !presentToolUseIds.has(owner))
+    .map(([path]) => path);
+  return carried.length > 0 ? carried : undefined;
+}
+
+/**
+ * Rebuild owners for the reported path set; new paths belong to a matching read
+ * actually trimmed in this request.
+ */
+export function recordDisclosedReadOwners(
+  owners: DisclosedReadOwners | undefined,
+  reportedPaths: unknown,
+  segments: readonly ContextSegment[],
+  bindings: readonly ClaudeSegmentBinding[],
+  trimmedSegmentIds: ReadonlySet<string>,
+): DisclosedReadOwners | undefined {
+  const paths = normalizeDisclosedReadPaths(reportedPaths);
+  if (!paths) return owners;
+  const next: DisclosedReadOwners = {};
+  const bindingBySegment = new Map(bindings.map((binding) => [binding.segmentId, binding]));
+  for (const path of paths) {
+    if (owners && Object.hasOwn(owners, path)) {
+      next[path] = owners[path] ?? null;
+      continue;
+    }
+    const owner = segments.find((segment) => {
+      if (!trimmedSegmentIds.has(segment.id)) return false;
+      const binding = bindingBySegment.get(segment.id);
+      const toolName = binding?.toolName?.trim().toLowerCase();
+      if (toolName !== "read" && toolName !== "file_read") return false;
+      const segmentPath = asRecord(segment.metadata).path;
+      return typeof segmentPath === "string" && segmentPath.trim().toLowerCase() === path;
+    });
+    next[path] = (owner && bindingBySegment.get(owner.id)?.toolUseId) || null;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function presentToolResultIds(payload: any): Set<string> {
+  const ids = new Set<string>();
+  for (const message of Array.isArray(payload?.messages) ? payload.messages : []) {
+    const content = asRecord(message).content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      const entry = asRecord(block);
+      if (String(entry.type ?? "").toLowerCase() === "tool_result" && typeof entry.tool_use_id === "string" && entry.tool_use_id) {
+        ids.add(entry.tool_use_id);
+      }
+    }
+  }
+  return ids;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -312,6 +394,7 @@ function buildTurnContext(
           blockIndex,
           field: typeof entry.text === "string" ? "text" : "content",
           toolName: typeof entry.name === "string" ? entry.name : hint?.toolName,
+          ...(toolUseId ? { toolUseId } : {}),
         });
       });
     });
@@ -552,8 +635,11 @@ export async function applyBeforeCallReductionToClaudePayload(params: {
   }
 
   const snapshot = await loadClaudeCodeSessionSnapshot(config.stateDir, sessionId);
+  // Snapshots written before owners were tracked only have `disclosedReadPaths`; those
+  // are ignored rather than carried, because carrying them reproduces the cache miss.
+  const disclosedReadOwners = normalizeDisclosedReadOwners(snapshot?.disclosedReadOwners);
   const built = buildTurnContext(payload, sessionId, {
-    disclosedReadPaths: normalizeDisclosedReadPaths(snapshot?.disclosedReadPaths),
+    disclosedReadPaths: carriedDisclosedReadPaths(disclosedReadOwners, presentToolResultIds(payload)),
   });
   const analyzerInstructions = buildAnalyzerReductionInstructions(built.turnCtx.segments, config);
   const fallbackInstructions = buildFallbackReductionInstructions(built.turnCtx.segments, config);
@@ -585,9 +671,13 @@ export async function applyBeforeCallReductionToClaudePayload(params: {
   const { turnCtx: reducedCtx, report } = await runReductionBeforeCall({ turnCtx, passes });
   const passEffects = summarizePassEffects(report);
   const changedSegmentIds = new Set<string>();
+  const trimmedSegmentIds = new Set<string>();
   for (const entry of report) {
     if (!entry.changed) continue;
-    for (const id of entry.touchedSegmentIds ?? []) changedSegmentIds.add(id);
+    for (const id of entry.touchedSegmentIds ?? []) {
+      changedSegmentIds.add(id);
+      if (entry.id === "tool_payload_trim") trimmedSegmentIds.add(id);
+    }
   }
 
   if (changedSegmentIds.size === 0) {
@@ -601,6 +691,13 @@ export async function applyBeforeCallReductionToClaudePayload(params: {
       passEffects,
       diagnostics: built.diagnostics,
       disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
+      disclosedReadOwners: recordDisclosedReadOwners(
+        disclosedReadOwners,
+        reducedCtx.metadata?.disclosedReadPaths,
+        built.turnCtx.segments,
+        bindings,
+        trimmedSegmentIds,
+      ),
       skippedReason: "pipeline_no_effect",
     };
   }
@@ -659,6 +756,13 @@ export async function applyBeforeCallReductionToClaudePayload(params: {
     diagnostics: built.diagnostics,
     visualSegments,
     disclosedReadPaths: normalizeDisclosedReadPaths(reducedCtx.metadata?.disclosedReadPaths),
+    disclosedReadOwners: recordDisclosedReadOwners(
+      disclosedReadOwners,
+      reducedCtx.metadata?.disclosedReadPaths,
+      built.turnCtx.segments,
+      bindings,
+      trimmedSegmentIds,
+    ),
   };
 }
 

@@ -232,6 +232,7 @@ async function recordClaudeGatewayTurn(params: {
   responseId?: string;
   previousResponseId?: string;
   disclosedReadPaths?: string[];
+  disclosedReadOwners?: Record<string, string | null>;
   requestChars: number;
   responseChars: number;
   assistantChars: number;
@@ -249,6 +250,7 @@ async function recordClaudeGatewayTurn(params: {
     latestModel: params.model,
     workspaceHint: params.workspaceHint,
     disclosedReadPaths: params.disclosedReadPaths,
+    disclosedReadOwners: params.disclosedReadOwners,
     requestChars: params.requestChars,
     responseChars: params.responseChars,
     assistantChars: params.assistantChars,
@@ -1066,6 +1068,7 @@ export async function startClaudeCodeGatewayRuntime(params: {
             responseId,
             previousResponseId,
             disclosedReadPaths: reductionSummary?.disclosedReadPaths,
+            disclosedReadOwners: reductionSummary?.disclosedReadOwners,
             requestChars: body.length,
             responseChars: rawStreamText.length,
             assistantChars: snapshot.assistantText.length,
@@ -1158,6 +1161,7 @@ export async function startClaudeCodeGatewayRuntime(params: {
         responseId,
         previousResponseId,
         disclosedReadPaths: reductionSummary?.disclosedReadPaths,
+        disclosedReadOwners: reductionSummary?.disclosedReadOwners,
         requestChars: body.length,
         responseChars: upstreamResp.text.length,
         assistantChars,
