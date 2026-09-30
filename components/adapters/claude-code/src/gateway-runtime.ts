@@ -1161,7 +1161,7 @@ export async function startClaudeCodeGatewayRuntime(params: {
         responseId,
         previousResponseId,
         disclosedReadPaths: reductionSummary?.disclosedReadPaths,
-            disclosedReadOwners: reductionSummary?.disclosedReadOwners,
+        disclosedReadOwners: reductionSummary?.disclosedReadOwners,
         requestChars: body.length,
         responseChars: upstreamResp.text.length,
         assistantChars,
