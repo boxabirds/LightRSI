@@ -5,6 +5,7 @@ import { registerCleanCommandBackendResolver } from "../clean.js";
 import { createClaudeCodeCleanCommandBackend, createClaudeCodeCliBridge } from "./claude-code.js";
 import { createCodexCleanCommandBackend, createCodexCliBridge } from "./codex.js";
 import { createOpenClawCleanCommandBackend, createOpenClawCliBridge } from "./openclaw.js";
+import { createOpenCodeCliBridge } from "./opencode.js";
 import {
   CLI_HOSTS,
   getCliHostRegistration,
@@ -33,6 +34,9 @@ const CLI_HOST_REGISTRATIONS: CliHostRegistration[] = CLI_HOSTS.map((host) => ({
         sessionId: target.sessionId,
         pathOverrides: target.pathOverrides,
       });
+    }
+    if (host.hostId === "opencode") {
+      return createOpenCodeCliBridge({ host: "opencode", sessionId: target.sessionId, pathOverrides: target.pathOverrides });
     }
     const bridge = createOpenClawCliBridge({ host: "openclaw", sessionId: target.sessionId });
     const handler = createProductSurfaceCommandHandler({
