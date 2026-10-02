@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, readdir, stat, unlink, writeFile, type FileHandle } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, stat, unlink, writeFile, type FileHandle } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const LOCK_RECOVERY_GRACE_MS = 1_000;
@@ -81,18 +81,27 @@ type RecoveryCandidateRecord = LockOwner & {
   ticket?: number;
 };
 
+async function publishRecoveryCandidate(path: string, record: RecoveryCandidateRecord): Promise<void> {
+  // Readers must see a complete record, including while a choosing candidate
+  // publishes its ticket. In-place writes expose empty/partial JSON to peers.
+  const temporaryPath = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, JSON.stringify(record), { flag: "wx" });
+    await rename(temporaryPath, path);
+  } finally {
+    await unlink(temporaryPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+}
+
 async function createRecoveryCandidate(lockPath: string): Promise<RecoveryCandidate> {
   const owner = createOwner();
   const directory = `${lockPath}.reclaimers`;
   await mkdir(directory, { recursive: true });
   const path = join(directory, `${owner.pid}-${owner.ownerId}.json`);
   try {
-    const handle = await open(path, "wx");
-    try {
-      await handle.writeFile(JSON.stringify({ ...owner, choosing: true }));
-    } finally {
-      await handle.close();
-    }
+    await publishRecoveryCandidate(path, { ...owner, choosing: true });
   } catch (error) {
     await unlink(path).catch(() => undefined);
     throw error;
@@ -133,7 +142,12 @@ async function readRecoveryCandidates(candidate: RecoveryCandidate): Promise<Arr
       if (record.pid !== pid || record.ownerId !== match[2]
         || typeof record.createdAt !== "string" || !validTicket) return undefined;
       contenders.push({ path, record: record as RecoveryCandidateRecord });
-    } catch { return undefined; }
+    } catch (error) {
+      // A losing contender may finish cleanup after stat but before readFile.
+      // Its disappearance does not invalidate the remaining candidates.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      return undefined;
+    }
   }
   return contenders;
 }
@@ -143,11 +157,11 @@ async function isRecoveryWinner(candidate: RecoveryCandidate): Promise<boolean> 
   if (!initial) return false;
   const ticket = initial.reduce((maximum, contender) => contender.record.choosing
     ? maximum : Math.max(maximum, contender.record.ticket ?? 0), 0) + 1;
-  await writeFile(candidate.path, JSON.stringify({
+  await publishRecoveryCandidate(candidate.path, {
     ...candidate.owner,
     choosing: false,
     ticket,
-  }));
+  });
   await new Promise((resolve) => setTimeout(resolve, RECOVERY_ELECTION_MS));
   const contenders = await readRecoveryCandidates(candidate);
   if (!contenders || contenders.some((contender) => contender.record.choosing)) return false;
