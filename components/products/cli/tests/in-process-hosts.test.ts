@@ -1,12 +1,12 @@
 /**
- * Regression matrix: OpenCode registration in the shared CLI
- * (hosts/in-process.ts, hosts/opencode.ts, registry, factory, dispatch, usage)
+ * Regression matrix: pi + OpenCode registration in the shared CLI
+ * (hosts/in-process.ts, hosts/pi.ts, hosts/opencode.ts, registry, factory, dispatch, usage)
  *
  * Registration
- *   H1 CLI_HOSTS lists opencode after the existing hosts (order preserved)
- *   H2 parseCliHostId accepts "opencode"
- *   H3 usage lists the host and an example
- * Command surface
+ *   H1 CLI_HOSTS lists pi and opencode after the existing hosts (order preserved)
+ *   H2 parseCliHostId accepts "pi" and "opencode"
+ *   H3 usage lists both hosts and an example for each
+ * Command surface (each case runs for both hosts)
  *   C1 status prints every shared key for the host's config
  *   C2 mode conservative / normal write the standard presets; aggressive refused;
  *      anything else prints usage
@@ -17,7 +17,7 @@
  *   C6 doctor returns the host's own doctor report
  *   C7 report: no activity → "No TokenPilot session stats yet."; with activity →
  *      report for the latest session
- *   C8 the TOKENPILOT_OPENCODE_CONFIG env override selects the config file
+ *   C8 env overrides (TOKENPILOT_PI_CONFIG / TOKENPILOT_OPENCODE_CONFIG) select the config file
  */
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
@@ -34,6 +34,7 @@ import { formatCliUsage } from "../src/usage.js";
 const saved = {
   HOME: process.env.HOME,
   USERPROFILE: process.env.USERPROFILE,
+  TOKENPILOT_PI_CONFIG: process.env.TOKENPILOT_PI_CONFIG,
   TOKENPILOT_OPENCODE_CONFIG: process.env.TOKENPILOT_OPENCODE_CONFIG,
   TOKENPILOT_OPENCODE_CONFIG_DIR: process.env.TOKENPILOT_OPENCODE_CONFIG_DIR,
 };
@@ -45,6 +46,7 @@ after(() => {
 });
 
 const HOSTS = [
+  { id: "pi", env: "TOKENPILOT_PI_CONFIG", doctorTitle: "TokenPilot pi doctor:", statusTitle: "TokenPilot pi status:" },
   { id: "opencode", env: "TOKENPILOT_OPENCODE_CONFIG", doctorTitle: "TokenPilot OpenCode doctor:", statusTitle: "TokenPilot OpenCode status:" },
 ] as const;
 
@@ -62,14 +64,15 @@ const readConfig = async (path: string) => JSON.parse(await readFile(path, "utf8
 
 describe("registration", () => {
   it("H1 hosts are appended in order", () => {
-    assert.deepEqual(CLI_HOSTS.map((h) => h.hostId), ["openclaw", "codex", "claude-code", "opencode"]);
+    assert.deepEqual(CLI_HOSTS.map((h) => h.hostId), ["openclaw", "codex", "claude-code", "pi", "opencode"]);
   });
   it("H2 host ids parse", () => {
+    assert.equal(parseCliHostId("pi"), "pi");
     assert.equal(parseCliHostId("opencode"), "opencode");
   });
-  it("H3 usage lists the host", () => {
+  it("H3 usage lists both", () => {
     const usage = formatCliUsage();
-    for (const text of ["  opencode\n", "lightrsi opencode report"]) assert.ok(usage.includes(text), text);
+    for (const text of ["  pi\n", "  opencode\n", "lightrsi pi doctor", "lightrsi opencode report"]) assert.ok(usage.includes(text), text);
   });
 });
 

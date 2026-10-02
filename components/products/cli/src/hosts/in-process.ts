@@ -1,5 +1,5 @@
 /**
- * Shared CLI bridge for in-process canonical adapters (currently OpenCode).
+ * Shared CLI bridge for in-process canonical adapters (pi, OpenCode).
  *
  * Mirrors the Claude Code / Codex bridges: flat `tokenpilot.json`, the restricted
  * host command handler (status, report, doctor, visual, mode conservative|normal,
@@ -35,7 +35,7 @@ export const IN_PROCESS_REDUCTION_PASS_NAMES = [
 ] as const;
 
 export type InProcessHostSpec = {
-  hostId: "opencode";
+  hostId: "pi" | "opencode";
   displayName: string;
   defaultConfigPath(): string;
   loadConfig(configPath: string): Promise<Record<string, unknown>>;
