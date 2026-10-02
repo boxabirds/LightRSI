@@ -80,6 +80,9 @@ jobs:
       - name: Test recovery MCP product
         run: pnpm --dir components/products/mcp test
 
+      - name: Test pi adapter
+        run: pnpm --dir components/adapters/pi test
+
       - name: Test OpenCode adapter
         run: pnpm --dir components/adapters/opencode test
 
