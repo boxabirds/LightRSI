@@ -263,6 +263,13 @@ test("release installer creates WSL-local launchers when only node.exe is availa
     const nodeLog = join(root, "node-args.txt");
     await mkdir(distDir, { recursive: true });
     await mkdir(fakeTools, { recursive: true });
+    // Expose only the shell tools the launcher needs, never the host's native node.
+    for (const tool of ["bash", "dirname", "mkdir", "cp", "chmod"]) {
+      const { stdout } = await execFileAsync(resolveBashCommand(), ["-c", `command -v ${tool}`]);
+      const toolPath = join(fakeTools, tool);
+      await writeFile(toolPath, `#!/bin/sh\nexec ${shellPath(stdout.trim())} "$@"\n`, "utf8");
+      await chmod(toolPath, 0o755);
+    }
     await writeFile(join(distDir, "install-cli.js"), "// fixture\n", "utf8");
     await writeFile(join(distDir, "lightrsi.js"), "// fixture\n", "utf8");
     await writeFile(
@@ -281,9 +288,9 @@ test("release installer creates WSL-local launchers when only node.exe is availa
     await runReleaseScript(root, [
       `INSTALLED_PLUGIN_PATH=${shellPath(pluginDir)}`,
       `LIGHTRSI_BIN_DIR=${shellPath(binDir)}`,
-      `PATH=${shellPath(fakeTools)}:/usr/bin:/bin`,
+      `PATH=${shellPath(fakeTools)}`,
       "install_bundled_cli",
-      `PATH=${shellPath(fakeTools)}:/usr/bin:/bin ${shellPath(join(binDir, "lightrsi"))} --help`,
+      `${shellPath(join(binDir, "lightrsi"))} --help`,
     ]);
 
     const launcher = await readFile(join(binDir, "lightrsi"), "utf8");
