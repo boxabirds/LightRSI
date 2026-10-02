@@ -34,6 +34,7 @@ export function formatCliUsage(): string {
     "  lightrsi openclaw doctor",
     "  lightrsi openclaw clean --require-tty --session <session-id>",
     "  lightrsi claude-code doctor",
+    "  lightrsi opencode report",
     "  lightrsi codex session <session-id> clean",
     "  lightrsi openclaw session 123e4567-e89b-12d3-a456-426614174000 report",
     "  lightrsi use openclaw",

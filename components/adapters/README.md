@@ -23,6 +23,10 @@ Adapter inventory:
   - adapter for Claude Code
 - `deepseek-harness/`
   - Cordis adapter and compatibility smoke path for DeepSeek Harness
+- `opencode/`
+  - in-process v1 plugin adapter for OpenCode
+- `shared/canonical/`
+  - host glue for in-process transcript adapters (canonical reduction, stabilizer application, recovery protocol, eviction surface, fail-open logging)
 - future adapters
   - other host-specific integrations
 
@@ -126,3 +130,4 @@ This keeps the first working version small and makes boundary mistakes easier to
 - [codex/README.md](./codex/README.md)
 - [claude-code/README.md](./claude-code/README.md)
 - [deepseek-harness/](./deepseek-harness/)
+- [opencode/README.md](./opencode/README.md)
