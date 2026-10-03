@@ -13,13 +13,19 @@
     <section class="hero-section">
       <img src="/images/logo.svg" alt="LightRSI" class="hero-logo" />
 
+      <a class="hero-announce" href="/LightRSI/hosts/compatibility">
+        <span class="hero-announce-dot" aria-hidden="true"></span>
+        New: OpenCode and pi adapters — six supported hosts
+        <span class="hero-announce-arrow" aria-hidden="true">→</span>
+      </a>
+
       <h1 class="hero-title">
         <span class="grad">LightRSI</span>
       </h1>
 
       <p class="hero-tagline">
         A modular runtime for recursive improvement in long-running LLM agents.<br>
-        Build capabilities once and run them across OpenClaw, Codex, Claude Code, and future agent hosts.
+        Build capabilities once and run them across six agent hosts, without a fork per host.
       </p>
 
       <p class="hero-sub">
@@ -60,8 +66,8 @@
           <div class="hero-kpi-label">Fewer input tokens<br><span class="kpi-sub">vs. Vanilla · PinchBench continuous</span></div>
         </div>
         <div class="hero-kpi">
-          <div class="hero-kpi-num" data-count="3" data-count-suffix="" data-count-dec="0">0</div>
-          <div class="hero-kpi-label">Hosts supported<br><span class="kpi-sub">OpenClaw · Codex · Claude Code</span></div>
+          <div class="hero-kpi-num" data-count="6" data-count-suffix="" data-count-dec="0">0</div>
+          <div class="hero-kpi-label">Agent hosts<br><span class="kpi-sub">OpenClaw · Codex · Claude Code<br>OpenCode · pi · DeepSeek Harness</span></div>
         </div>
       </div>
     </section>
@@ -93,9 +99,76 @@
             <div class="arch-item">
               <div class="arch-item-icon">🔌</div>
               <div class="arch-item-title">Host Adapters</div>
-              <div class="arch-item-desc">Integration layer connecting plugins to OpenClaw, Codex, and Claude Code.</div>
+              <div class="arch-item-desc">Integration layer for six hosts, through a local proxy or gateway, or fully in-process.</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-icon">🧭</div>
+              <div class="arch-item-title">Products</div>
+              <div class="arch-item-desc">Shared CLI, browser visual inspector, recovery MCP server, and Context Cleaner.</div>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Supported Hosts -->
+    <section class="landing-section reveal-section">
+      <div class="section-container">
+        <span class="section-kicker">Hosts</span>
+        <h2 class="section-title">
+          Runs <span class="grad">inside your agent</span>
+        </h2>
+        <p class="section-sub">
+          The same TokenPilot preset binds to every host through a thin adapter. OpenClaw, Codex, and Claude Code route through a local proxy or gateway; OpenCode and pi run in-process.
+        </p>
+
+        <div class="host-grid">
+          <a class="host-card" href="/LightRSI/hosts/openclaw">
+            <span class="host-card-head">
+              <span class="host-card-name">OpenClaw</span>
+              <span class="host-tag host-tag--proxy">proxy</span>
+            </span>
+            <span class="host-card-desc">Bundled plugin with the richest surface: in-host commands, lifecycle eviction controls, and the visual inspector.</span>
+          </a>
+          <a class="host-card" href="/LightRSI/hosts/codex">
+            <span class="host-card-head">
+              <span class="host-card-name">Codex CLI</span>
+              <span class="host-tag host-tag--proxy">proxy</span>
+            </span>
+            <span class="host-card-desc">Hooks plus a local Responses proxy, with the standalone <code>lightrsi codex</code> surface.</span>
+          </a>
+          <a class="host-card" href="/LightRSI/hosts/claude-code">
+            <span class="host-card-head">
+              <span class="host-card-name">Claude Code</span>
+              <span class="host-tag host-tag--proxy">gateway</span>
+            </span>
+            <span class="host-card-desc">Anthropic-compatible gateway routing with observability hooks and real MCP recovery.</span>
+          </a>
+          <a class="host-card" href="/LightRSI/hosts/opencode">
+            <span class="host-card-head">
+              <span class="host-card-name">OpenCode</span>
+              <span class="host-tag host-tag--inprocess">in-process</span>
+            </span>
+            <span class="host-card-desc">A v1 plugin plus the shared recovery MCP server. No proxy, and never rewrites your config comments.</span>
+          </a>
+          <a class="host-card" href="/LightRSI/hosts/pi">
+            <span class="host-card-head">
+              <span class="host-card-name">pi</span>
+              <span class="host-tag host-tag--inprocess">in-process</span>
+            </span>
+            <span class="host-card-desc">An extension with a native recovery tool, since pi has no MCP. No pi-owned file is touched.</span>
+          </a>
+          <a class="host-card" href="/LightRSI/hosts/deepseek-harness">
+            <span class="host-card-head">
+              <span class="host-card-name">DeepSeek Harness</span>
+              <span class="host-tag host-tag--plugin">plugin</span>
+            </span>
+            <span class="host-card-desc">A native Cordis plugin with durable session projection and opt-in canonical-surface eviction.</span>
+          </a>
+        </div>
+
+        <div class="section-link-row">
+          <a href="/LightRSI/hosts/compatibility" class="cta-secondary">Full capability matrix →</a>
         </div>
       </div>
     </section>
@@ -131,6 +204,22 @@
                     <span class="host-chip">OpenClaw</span>
                     <span class="host-chip">Codex</span>
                     <span class="host-chip">Claude Code</span>
+                    <span class="host-chip">OpenCode</span>
+                    <span class="host-chip">pi</span>
+                    <span class="host-chip">DeepSeek Harness</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Context Cleaner</strong></td>
+                <td>User-approved task-level context cleaning</td>
+                <td><span class="status-stable">Stable</span></td>
+                <td>
+                  <div class="host-chips">
+                    <span class="host-chip">OpenClaw</span>
+                    <span class="host-chip">Codex</span>
+                    <span class="host-chip">Claude Code</span>
+                    <span class="host-chip">DeepSeek Harness</span>
                   </div>
                 </td>
               </tr>
@@ -192,11 +281,32 @@
 
         <div class="doc-dir-grid">
 
+          <!-- Getting Started -->
+          <a href="/LightRSI/getting-started/quick-start" class="doc-dir-card">
+            <span class="doc-dir-icon">🚀</span>
+            <span class="doc-dir-title">Getting Started</span>
+            <span class="doc-dir-pages">What is LightRSI · Quick Start · Install · Your first plugin</span>
+          </a>
+
           <!-- Hosts -->
           <a href="/LightRSI/hosts/compatibility" class="doc-dir-card">
             <span class="doc-dir-icon">🔌</span>
             <span class="doc-dir-title">Hosts</span>
-            <span class="doc-dir-pages">OpenClaw · Codex · Claude Code — install, verify, and configure</span>
+            <span class="doc-dir-pages">OpenClaw · Codex · Claude Code · OpenCode · pi · DeepSeek Harness</span>
+          </a>
+
+          <!-- Plugin Catalog -->
+          <a href="/LightRSI/plugin-catalog/overview" class="doc-dir-card">
+            <span class="doc-dir-icon">🧩</span>
+            <span class="doc-dir-title">Plugin Catalog</span>
+            <span class="doc-dir-pages">TokenPilot preset · Context Cleaner · configuration and benchmarks</span>
+          </a>
+
+          <!-- Platform Concepts -->
+          <a href="/LightRSI/platform-concepts/core-runtime" class="doc-dir-card">
+            <span class="doc-dir-icon">🏗️</span>
+            <span class="doc-dir-title">Platform Concepts</span>
+            <span class="doc-dir-pages">Core Runtime · Plugins · Host Adapters · Lifecycle · Data and permissions</span>
           </a>
 
           <!-- User Guide -->
@@ -206,6 +316,13 @@
             <span class="doc-dir-pages">CLI Reference · Sessions · Visual Inspector · Logs · Uninstall</span>
           </a>
 
+          <!-- Development -->
+          <a href="/LightRSI/development/repository-structure" class="doc-dir-card">
+            <span class="doc-dir-icon">🛠️</span>
+            <span class="doc-dir-title">Development</span>
+            <span class="doc-dir-pages">Repository structure · Local setup · Build and test · Contributing</span>
+          </a>
+
         </div>
       </div>
     </section>
@@ -213,7 +330,7 @@
     <!-- Bottom CTA -->
     <section class="bottom-cta">
       <h2>Ready to reduce your agent costs?</h2>
-      <p>Install LightRSI and TokenPilot in under 5 minutes.</p>
+      <p>Install LightRSI and TokenPilot in under 5 minutes, on any of the six supported hosts.</p>
       <a href="/LightRSI/getting-started/quick-start" class="cta-primary bottom-cta-btn">Get Started →</a>
     </section>
   </div>

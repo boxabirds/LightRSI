@@ -8,7 +8,7 @@ A modular runtime for recursive improvement in long-running LLM agents
 
 <p align="center">
   <img src="https://img.shields.io/badge/Framework-LightRSI-black" alt="framework">
-  <img src="https://img.shields.io/badge/Hosts-OpenClaw%20%7C%20Codex%20%7C%20Claude%20Code%20%7C%20DeepSeek%20Harness-green" alt="hosts">
+  <img src="https://img.shields.io/badge/Hosts-OpenClaw%20%7C%20Codex%20%7C%20Claude%20Code%20%7C%20OpenCode%20%7C%20pi%20%7C%20DeepSeek%20Harness-green" alt="hosts">
   <img src="https://img.shields.io/badge/Product-Context%20Cleaner-orange" alt="product">
   <img src="https://img.shields.io/badge/Paper-TokenPilot-blue" alt="paper">
   <img src="https://img.shields.io/badge/Package%20Manager-pnpm-informational" alt="pnpm">
@@ -23,7 +23,7 @@ A modular runtime for recursive improvement in long-running LLM agents
 
 ### Context Cleaner
 
-Context Cleaner is available, with the same plan, approval, status, and cancellation model across hosts. In Codex, `/lightrsi-clean` opens the host-rendered task selector; the direct terminal equivalent is `lightrsi codex clean`. Analysis is read-only until you confirm a selection, and protected tasks cannot be selected.
+Context Cleaner is available on OpenClaw, Codex, Claude Code, and DeepSeek Harness, with the same plan, approval, status, and cancellation model across hosts. In Codex, `/lightrsi-clean` opens the host-rendered task selector; the direct terminal equivalent is `lightrsi codex clean`. Analysis is read-only until you confirm a selection, and protected tasks cannot be selected. The pi and OpenCode adapters do not integrate Context Cleaner yet.
 
 <p align="center">
   <img src="./figs/tokenpilot/ContextCleaner.gif" alt="Codex Context Cleaner task selection" width="900">
@@ -62,9 +62,10 @@ LightRSI separates reusable improvement capabilities from shared runtime infrast
 <span id='news'/>
 
 ## 📢 News
-- **[2026-09-16]**: 🚀 **Context Cleaner**, our first product, is now available, and TokenPilot now supports **DeepSeek Harness**.
+- **[2026-10-02]**: 🧩 TokenPilot now supports **[OpenCode](https://opencode.ai)** and **[pi](https://pi.dev)** as in-process integrations, with no proxy or gateway. The host-neutral eviction core moved into `@lightrsi/eviction`, so adapters reuse it instead of copying it.
+- **[2026-09-16]**: 🚀 **[Context Cleaner](./website/user-guide/context-cleaner.md)**, our first product, is now available, and TokenPilot now supports **[DeepSeek Harness](./website/hosts/deepseek-harness.md)**.
 - **[2026-08-21]**: 🎉🎉🎉 [**TokenPilot: Cache-Efficient Context Management for LLM Agents**](https://arxiv.org/abs/2606.17016) has been accepted by **EMNLP 2026**!
-- **[2026-06-28]**: 🧩 TokenPilot now supports Codex and Claude Code. Demo video: [YouTube](https://www.youtube.com/watch?v=LGpu7FqaXCI) · [Bilibili](https://www.bilibili.com/video/BV1DSM86fE8M/?spm_id_from=333.1007.0.0)
+- **[2026-06-28]**: 🧩 TokenPilot now supports **[Codex](./website/hosts/codex.md)** and **[Claude Code](./website/hosts/claude-code.md)**. Demo video: [YouTube](https://www.youtube.com/watch?v=LGpu7FqaXCI) · [Bilibili](https://www.bilibili.com/video/BV1DSM86fE8M/?spm_id_from=333.1007.0.0)
 - **[2026-06-16]**: 🚀 **[TokenPilot: Cache-Efficient Context Management for LLM Agents](https://arxiv.org/abs/2606.17016)** is released.
 <span id='installation'/>
 
@@ -81,11 +82,18 @@ corepack enable
 pnpm install
 ```
 
-The Host-specific Cleaner installer below builds the shared CLI, recovery MCP,
-and selected adapter before installing them. A separate repository-wide build is
-not required for this flow.
+The Host-specific Cleaner installer below builds the shared CLI, recovery MCP, and selected adapter before installing them. A separate repository-wide build is not required for this flow.
 
 ### 2. Pick Your Host
+
+| Host | Integration mode | Install entry |
+| :-- | :-- | :-- |
+| OpenClaw | bundled plugin + embedded runtime | `pnpm component:install:tokenpilot:openclaw` |
+| Codex CLI | hooks + local Responses proxy | `corepack pnpm cleaner:install:codex` |
+| Claude Code | gateway routing + observability hooks | `corepack pnpm cleaner:install:claude-code` |
+| OpenCode | in-process plugin + recovery MCP | `npm --prefix components/adapters/opencode run install:opencode` |
+| pi | in-process extension + native recovery tool | `npm --prefix components/adapters/pi run install:pi` |
+| DeepSeek Harness | native Cordis plugin | build the adapter package, then `plugin add` in the Harness checkout |
 
 Open the host you want and run the default install commands.
 
@@ -128,12 +136,7 @@ Default install:
 corepack pnpm cleaner:install:codex
 ```
 
-This builds and installs the shared CLI, recovery MCP, Codex adapter, and the
-explicit-only `lightrsi-clean`, `lightrsi-clean-status`,
-`lightrsi-clean-apply`, and `lightrsi-clean-cancel` command skills. It keeps
-your current active Codex provider, reroutes it through the local TokenPilot
-proxy, writes `~/.codex/tokenpilot.json`, and registers the required hooks and
-MCP server.
+This builds and installs the shared CLI, recovery MCP, Codex adapter, and the explicit-only `lightrsi-clean`, `lightrsi-clean-status`, `lightrsi-clean-apply`, and `lightrsi-clean-cancel` command skills. It keeps your current active Codex provider, reroutes it through the local TokenPilot proxy, writes `~/.codex/tokenpilot.json`, and registers the required hooks and MCP server.
 
 If your Codex config files are not under the default `~/.codex`, set:
 
@@ -149,10 +152,7 @@ Then run the same install flow:
 corepack pnpm cleaner:install:codex
 ```
 
-On Windows, the installer uses the npm command directory when that directory is
-already on `PATH` and creates `lightrsi.cmd`. On Linux/macOS it installs under
-`~/.local/bin` by default. Set `LIGHTRSI_BIN_DIR` to choose another command
-directory.
+On Windows, the installer uses the npm command directory when that directory is already on `PATH` and creates `lightrsi.cmd`. On Linux/macOS it installs under `~/.local/bin` by default. Set `LIGHTRSI_BIN_DIR` to choose another command directory.
 
 </details>
 
@@ -167,10 +167,7 @@ Default install:
 corepack pnpm cleaner:install:claude-code
 ```
 
-This builds and installs the shared CLI, recovery MCP, Claude Code adapter, and
-the explicit-only Cleaner analysis, status, apply, and cancel command skills. It
-updates local gateway routing, registers the required hooks and MCP server, and
-preserves existing Claude files as `.tokenpilot.bak` backups before rewriting.
+This builds and installs the shared CLI, recovery MCP, Claude Code adapter, and the explicit-only Cleaner analysis, status, apply, and cancel command skills. It updates local gateway routing, registers the required hooks and MCP server, and preserves existing Claude files as `.tokenpilot.bak` backups before rewriting.
 
 If your Claude Code files are not under the default `~/.claude`, set:
 
@@ -186,11 +183,58 @@ Then run the same install flow:
 corepack pnpm cleaner:install:claude-code
 ```
 
-Use `node scripts/install-cleaner.mjs <host> --dry-run` to inspect the exact build
-and installation commands without changing Host configuration.
-Add `--skip-build` only when reusing an existing local build; the installer
-rejects missing or older CLI, MCP, and adapter artifacts before changing Host
-configuration.
+Use `node scripts/install-cleaner.mjs <host> --dry-run` to inspect the exact build and installation commands without changing Host configuration. Add `--skip-build` only when reusing an existing local build; the installer rejects missing or older CLI, MCP, and adapter artifacts before changing Host configuration.
+
+</details>
+
+<details>
+<summary><strong>OpenCode</strong></summary>
+
+<br>
+
+The OpenCode adapter is an in-process v1 plugin plus the shared recovery MCP server, so no proxy or gateway is involved.
+
+```bash
+pnpm install
+pnpm --filter @lightrsi/mcp build                   # recovery MCP server
+npm --prefix components/adapters/opencode run build
+npm --prefix components/products/cli run build      # for the lightrsi CLI
+npm --prefix components/adapters/opencode run install:opencode
+```
+
+Install writes `plugins/tokenpilot.js` and a single `mcp.tokenpilot_memory_fault_recover` entry under the OpenCode config dir (`$XDG_CONFIG_HOME/opencode`, default `~/.config/opencode`), backing up any file it replaces. If you keep an `opencode.jsonc`, or a `opencode.json` that is not plain JSON, the installer leaves it untouched and prints the MCP snippet for you to paste, so your comments are never lost. Set `TOKENPILOT_OPENCODE_CONFIG_DIR` to use another config dir.
+
+Uninstall removes only what install added:
+
+```bash
+npm --prefix components/adapters/opencode run uninstall:opencode
+npm --prefix components/adapters/opencode run uninstall:opencode -- --purge   # also created config and state
+```
+
+</details>
+
+<details>
+<summary><strong>pi</strong></summary>
+
+<br>
+
+The pi adapter is an in-process extension, so no proxy or gateway is involved and no pi-owned config file is modified.
+
+```bash
+pnpm install
+npm --prefix components/adapters/pi run build
+npm --prefix components/products/cli run build      # for the lightrsi CLI
+npm --prefix components/adapters/pi run install:pi
+```
+
+Install writes `~/.pi/agent/extensions/tokenpilot/index.js`, a loader that pi auto-loads (any pre-existing file at that path is backed up first), and `~/.pi/agent/tokenpilot.json`, which never contains credentials. `PI_CODING_AGENT_DIR` and `TOKENPILOT_PI_CONFIG` are honoured.
+
+Uninstall removes the loader and restores any backup:
+
+```bash
+npm --prefix components/adapters/pi run uninstall:pi
+npm --prefix components/adapters/pi run uninstall:pi -- --purge   # also created config and state
+```
 
 </details>
 
@@ -337,12 +381,67 @@ Like Codex, install success does not guarantee that the gateway is already healt
 </details>
 
 <details>
+<summary><strong>OpenCode</strong></summary>
+
+<br>
+
+The current OpenCode path uses the in-process plugin plus the shared recovery MCP server.
+
+1. Run the OpenCode install flow shown above.
+2. Restart OpenCode so the plugin and the MCP server load.
+3. Verify the adapter:
+
+```bash
+lightrsi opencode status
+lightrsi opencode doctor
+lightrsi opencode report
+lightrsi opencode mode normal
+lightrsi opencode eviction status
+```
+
+Expected first-run shape:
+
+- `lightrsi opencode doctor` reports the loader, the bundle, and the MCP entry present, with the MCP probe `ok`
+- after a few turns, `lightrsi opencode report` has session data
+- config edits, including `lightrsi opencode mode ...`, apply on the next request without restarting OpenCode
+
+TokenPilot never changes OpenCode's native `compaction.prune` setting; `lightrsi opencode doctor` reports it as `native tool-output pruning: on|off`.
+
+</details>
+
+<details>
+<summary><strong>pi</strong></summary>
+
+<br>
+
+The current pi path uses the in-process extension, with recovery available as a native tool because pi has no MCP.
+
+1. Run the pi install flow shown above.
+2. Start pi, or run `/reload` in a running session, so the extension loads.
+3. Verify the adapter:
+
+```bash
+lightrsi pi status
+lightrsi pi doctor
+lightrsi pi report
+lightrsi pi mode normal
+lightrsi pi eviction status
+```
+
+Expected first-run shape:
+
+- `lightrsi pi doctor` reports the loader and bundle present, a writable state dir, and `declared features: stabilizer, reduction, eviction`
+- after a few turns, `lightrsi pi report` has session data
+- no pi-owned file (`settings.json`, `models.json`, `auth.json`) is modified
+
+</details>
+
+<details>
 <summary><strong>DeepSeek Harness</strong></summary>
 
 <br>
 
-After adding and enabling the `tokenpilot-dsh` Cordis plugin, open a DeepSeek
-Harness session and run:
+After adding and enabling the `tokenpilot-dsh` Cordis plugin, open a DeepSeek Harness session and run:
 
 ```text
 /tokenpilot-status
@@ -396,6 +495,7 @@ At a high level:
   - verified feature combinations such as TokenPilot
 - `components/adapters`
   - host-specific integration, install surfaces, runtime hooks, and product registration
+  - OpenClaw, Codex, and Claude Code route requests through a local proxy or gateway; OpenCode and pi run in-process, so they need no proxy
 - `components/products`
   - shared CLI, Visual launcher, recovery MCP, and interactive Cleaner surfaces
 
@@ -411,7 +511,10 @@ LightRSI/
 │   │   ├── openclaw/             # OpenClaw adapter
 │   │   ├── codex/                # Codex CLI adapter
 │   │   ├── claude-code/          # Claude Code adapter
-│   │   └── deepseek-harness/     # native DeepSeek Harness Cordis adapter
+│   │   ├── opencode/             # in-process OpenCode plugin + recovery MCP
+│   │   ├── pi/                   # in-process pi extension + native recovery tool
+│   │   ├── deepseek-harness/     # native DeepSeek Harness Cordis adapter
+│   │   └── shared/               # code shared by the in-process adapters
 │   └── products/
 │       ├── cli/                  # shared lightrsi CLI, browser visual launcher, and Cleaner UI
 │       └── mcp/                  # shared recovery and interactive MCP session support
@@ -556,6 +659,65 @@ Useful Claude Code controls:
 - `reduction on|off` toggles observation reduction
 - `reduction mode <light|balanced>` switches between lighter and stronger trimming
 - `reduction pass toolPayloadTrim off` disables one specific reduction pass
+
+</details>
+
+<details>
+<summary><strong>OpenCode</strong></summary>
+
+<br>
+
+Use the standalone CLI:
+
+```bash
+lightrsi opencode status
+lightrsi opencode report
+lightrsi opencode doctor
+lightrsi opencode visual
+lightrsi opencode session <session-id> report
+lightrsi opencode reduction status
+lightrsi opencode mode normal
+lightrsi opencode eviction status
+lightrsi opencode help
+```
+
+Useful OpenCode controls:
+
+- `stabilizer on|off` toggles stable-prefix rewriting
+- `reduction on|off` toggles observation reduction
+- `reduction pass <name> on|off` disables one specific reduction pass
+- `eviction on|off` and `eviction set minBlockChars <number>` control opt-in lifecycle eviction
+- `mode aggressive` is not exposed, as on Claude Code and pi
+
+</details>
+
+<details>
+<summary><strong>pi</strong></summary>
+
+<br>
+
+Use the standalone CLI:
+
+```bash
+lightrsi pi status
+lightrsi pi report
+lightrsi pi doctor
+lightrsi pi visual
+lightrsi pi session <session-id> report
+lightrsi pi reduction status
+lightrsi pi mode normal
+lightrsi pi eviction status
+lightrsi pi help
+```
+
+Useful pi controls:
+
+- `stabilizer on|off` toggles stable-prefix rewriting
+- `stabilizer target <developer|user>` chooses where dynamic context is attached
+- `reduction on|off` toggles observation reduction, and `reduction mode <light|balanced|aggressive>` switches trimming strength
+- `reduction pass <name> on|off` disables one specific reduction pass
+- `eviction on|off` and `eviction set minBlockChars <number>` control opt-in lifecycle eviction
+- `mode aggressive` is not exposed
 
 </details>
 

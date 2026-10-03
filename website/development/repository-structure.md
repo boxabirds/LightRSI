@@ -9,7 +9,9 @@ LightRSI/
 │   │   ├── openclaw/            #   OpenClaw native plugin adapter
 │   │   ├── codex/               #   Codex CLI proxy + hooks adapter
 │   │   ├── claude-code/         #   Claude Code gateway + MCP adapter
-│   │   └── deepseek-harness/    #   DeepSeek Harness Cordis adapter
+│   │   ├── deepseek-harness/    #   DeepSeek Harness Cordis adapter
+│   │   ├── pi/                  #   pi in-process extension adapter
+│   │   └── opencode/            #   OpenCode in-process plugin + MCP adapter
 │   ├── products/                # Shared user-facing entrypoints
 │   │   ├── cli/                 #   Shared lightrsi CLI
 │   │   └── mcp/                 #   Shared MCP recovery server

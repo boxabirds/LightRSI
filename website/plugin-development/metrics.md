@@ -19,6 +19,8 @@ State roots by host:
 - OpenClaw: `~/.openclaw/tokenpilot-plugin-state/tokenpilot/`
 - Codex CLI: `~/.codex/tokenpilot-state/tokenpilot/`
 - Claude Code: `~/.claude/tokenpilot-state/tokenpilot/`
+- pi: `~/.pi/agent/tokenpilot-state/tokenpilot/`
+- OpenCode: `~/.config/opencode/tokenpilot-state/tokenpilot/`
 
 ## Related Pages
 

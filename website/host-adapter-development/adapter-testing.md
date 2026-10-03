@@ -20,6 +20,12 @@ npm --prefix components/adapters/codex test
 # Claude Code adapter
 npm --prefix components/adapters/claude-code test
 
+# pi adapter
+npm --prefix components/adapters/pi test
+
+# OpenCode adapter
+npm --prefix components/adapters/opencode test
+
 # DeepSeek Harness compatibility smoke
 pnpm --filter @lightrsi/deepseek-harness-adapter compatibility:smoke -- --dsh-checkout=/absolute/path/to/deepseek-harness
 ```
@@ -38,6 +44,8 @@ Or per-adapter:
 npm --prefix components/adapters/openclaw run doctor:openclaw
 npm --prefix components/adapters/codex run doctor:codex
 npm --prefix components/adapters/claude-code run doctor:claude-code
+npm --prefix components/adapters/pi run doctor:pi
+npm --prefix components/adapters/opencode run doctor:opencode
 ```
 
 Test directories exist at `adapters/<host>/tests/`.

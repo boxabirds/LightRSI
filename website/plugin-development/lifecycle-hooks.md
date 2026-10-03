@@ -4,8 +4,12 @@ TokenPilot implements host-specific lifecycle hooks through its adapters. The ac
 
 | Host | Hooks Used |
 | :-- | :-- |
+| OpenClaw | native plugin slot: layered context engine, tool-call hooks, and tool-result persistence (no external hook registration) |
 | Codex CLI | `SessionStart`, `PreToolUse`, `PostToolUse` (registered in `hooks.json`) |
 | Claude Code | `SessionStart` (auto-starts gateway) |
+| pi | `before_agent_start` (stable prefix), `context` (reduction), `turn_end` (opt-in eviction) |
+| OpenCode | `experimental.chat.system.transform` (stable prefix), `experimental.chat.messages.transform` (reduction and opt-in eviction) |
+| DeepSeek Harness | Cordis plugin lifecycle; status is reported through `/tokenpilot-status` |
 
 These are host-specific hook names used by TokenPilot adapters, not a universal lifecycle specification. No formal lifecycle hook specification exists for the platform.
 

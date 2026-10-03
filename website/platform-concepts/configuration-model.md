@@ -8,6 +8,8 @@
 | Codex | `~/.codex/tokenpilot.json` | Separate plugin config file |
 | Claude Code | `~/.claude/tokenpilot.json` | Separate plugin config file |
 | DeepSeek Harness | Harness profile's `cordis.patch.yml` | `tokenpilot-dsh` config; [setup and defaults](/hosts/deepseek-harness#configure-and-enable) |
+| pi | `~/.pi/agent/tokenpilot.json` | Separate plugin config file |
+| OpenCode | `~/.config/opencode/tokenpilot.json` | Separate plugin config file; recovery MCP entry in `opencode.json` |
 
 ## Environment Variables
 
@@ -23,6 +25,10 @@ Adapters use environment variables for non-default paths:
 | `CLAUDE_CODE_SETTINGS_PATH` | Custom settings.json path | Claude Code |
 | `CLAUDE_CODE_MCP_CONFIG_PATH` | Custom .claude.json path | Claude Code |
 | `TOKENPILOT_CLAUDE_CODE_CONFIG` | Custom tokenpilot.json path | Claude Code |
+| `PI_CODING_AGENT_DIR` | Custom pi agent dir | pi |
+| `TOKENPILOT_PI_CONFIG` | Custom tokenpilot.json path | pi |
+| `TOKENPILOT_OPENCODE_CONFIG_DIR` | Custom OpenCode config dir | OpenCode |
+| `TOKENPILOT_OPENCODE_CONFIG` | Custom tokenpilot.json path | OpenCode |
 
 ## Next
 

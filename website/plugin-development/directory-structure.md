@@ -10,7 +10,10 @@ components/
 │   ├── openclaw/         # OpenClaw adapter, hooks, commands, embedded proxy
 │   ├── codex/            # Codex CLI adapter, hooks, provider install, local proxy
 │   ├── claude-code/      # Claude Code adapter, gateway routing, MCP recovery
-│   └── deepseek-harness/ # DeepSeek Harness Cordis adapter
+│   ├── opencode/         # OpenCode in-process plugin and recovery MCP
+│   ├── pi/               # pi in-process extension and native recovery tool
+│   ├── deepseek-harness/ # DeepSeek Harness Cordis adapter
+│   └── shared/           # Code shared by the in-process adapters
 ├── products/
 │   ├── cli/              # Shared lightrsi CLI surface
 │   └── mcp/              # Shared memory_fault_recover MCP server

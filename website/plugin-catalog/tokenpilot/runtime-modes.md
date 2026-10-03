@@ -10,6 +10,8 @@ TokenPilot provides three runtime modes: **conservative**, **normal**, and **agg
 | Codex | `conservative`, `normal` |
 | Claude Code | `conservative`, `normal` |
 | DeepSeek Harness | Configure `tokenpilot-dsh` in the Harness profile; the shared runtime-mode commands do not apply |
+| pi | `conservative`, `normal` |
+| OpenCode | `conservative`, `normal` |
 
 For DeepSeek Harness, follow [Configure and Enable](/hosts/deepseek-harness#configure-and-enable). Its opt-in eviction is controlled by profile settings, not by choosing `aggressive` mode.
 
@@ -70,11 +72,15 @@ You can change modes at any time — no restart needed:
 # Per-host (OpenClaw supports all three modes)
 lightrsi openclaw mode aggressive
 
-# Codex and Claude Code only support conservative and normal
+# Codex, Claude Code, pi, and OpenCode only support conservative and normal
 lightrsi codex mode conservative
 lightrsi codex mode normal
 lightrsi claude-code mode conservative
 lightrsi claude-code mode normal
+lightrsi pi mode conservative
+lightrsi pi mode normal
+lightrsi opencode mode conservative
+lightrsi opencode mode normal
 
 # Or inside OpenClaw session
 /lightrsi mode aggressive

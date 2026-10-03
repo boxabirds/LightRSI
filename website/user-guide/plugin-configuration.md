@@ -30,6 +30,8 @@ Edit the plugin config file directly:
 | Codex | `~/.codex/tokenpilot.json` |
 | Claude Code | `~/.claude/tokenpilot.json` |
 | DeepSeek Harness | `tokenpilot-dsh` in the selected Harness profile's `cordis.patch.yml` |
+| pi | `~/.pi/agent/tokenpilot.json` |
+| OpenCode | `~/.config/opencode/tokenpilot.json` |
 
 DeepSeek Harness is disabled by default. Configure its persistent `stateDir`, estimator, and eviction settings before enabling it. See the [configuration example](/hosts/deepseek-harness#configure-and-enable).
 

@@ -34,7 +34,7 @@ TokenPilot is evaluated on PinchBench and Claw-Eval in isolated and continuous m
 
 ## Supported Hosts
 
-TokenPilot integrates with four hosts. DeepSeek Harness uses a native Cordis plugin for optional context eviction and session status; its setup and capabilities differ from the other adapters.
+TokenPilot integrates with six hosts. DeepSeek Harness uses a native Cordis plugin for optional context eviction and session status; pi and OpenCode run in-process; their setup and capabilities differ from the other adapters.
 
 | Host | Integration | Page |
 | :-- | :-- | :-- |
@@ -42,6 +42,8 @@ TokenPilot integrates with four hosts. DeepSeek Harness uses a native Cordis plu
 | Codex CLI | Local proxy + hooks | [Codex](/hosts/codex) |
 | Claude Code | Local gateway + MCP | [Claude Code](/hosts/claude-code) |
 | DeepSeek Harness | Native Cordis plugin | [DeepSeek Harness](/hosts/deepseek-harness) |
+| pi | In-process extension + native recovery tool | [pi](/hosts/pi) |
+| OpenCode | In-process v1 plugin + recovery MCP | [OpenCode](/hosts/opencode) |
 
 Feature availability varies by host. See [Host Compatibility](/hosts/compatibility) and each host's setup guide before choosing configuration or commands.
 

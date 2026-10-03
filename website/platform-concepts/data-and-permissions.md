@@ -6,7 +6,7 @@ LightRSI runs entirely on your machine. Understanding what data is stored, where
 
 | Data | Location | Purpose |
 | :-- | :-- | :-- |
-| Configuration files | `~/.openclaw/`, `~/.codex/`, `~/.claude/` | Plugin and host settings |
+| Configuration files | `~/.openclaw/`, `~/.codex/`, `~/.claude/`, `~/.pi/agent/`, `~/.config/opencode/` | Plugin and host settings |
 | Session metrics | In-memory (current session only) | Token counts, cache stats, cost |
 | Backup files | `*.tokenpilot.bak` alongside originals | Recovery on uninstall |
 | CLI state | `~/.lightrsi/` (if created) | Default host, pinned session |

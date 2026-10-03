@@ -4,7 +4,7 @@ Common problems, symptoms, and fixes for TokenPilot.
 
 ## Quick Diagnostic
 
-For OpenClaw, Codex, and Claude Code, start with:
+For OpenClaw, Codex, Claude Code, pi, and OpenCode, start with:
 
 ```bash
 lightrsi doctor

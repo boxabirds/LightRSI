@@ -33,7 +33,18 @@ export default defineConfig({
       { text: 'Getting Started', link: '/getting-started/what-is-lightrsi' },
       { text: 'Platform Concepts', link: '/platform-concepts/core-runtime' },
       { text: 'Plugin Catalog', link: '/plugin-catalog/overview' },
-      { text: 'Hosts', link: '/hosts/compatibility' },
+      {
+        text: 'Hosts',
+        items: [
+          { text: 'Compatibility Matrix', link: '/hosts/compatibility' },
+          { text: 'OpenClaw', link: '/hosts/openclaw' },
+          { text: 'Codex', link: '/hosts/codex' },
+          { text: 'Claude Code', link: '/hosts/claude-code' },
+          { text: 'OpenCode', link: '/hosts/opencode' },
+          { text: 'pi', link: '/hosts/pi' },
+          { text: 'DeepSeek Harness', link: '/hosts/deepseek-harness' },
+        ],
+      },
       { text: 'User Guide', link: '/user-guide/managing-plugins' },
       {
         text: 'More',

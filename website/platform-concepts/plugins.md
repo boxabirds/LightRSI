@@ -20,11 +20,11 @@ These layers have different responsibilities:
 | [TokenPilot](/plugin-catalog/tokenpilot/overview) | Preset | Composes cache-aware context-management policies |
 | [Context Cleaner](/user-guide/context-cleaner) | Product | Presents tasks and recommendations, takes explicit approval, and reports cleanup status |
 
-Cleaner reuses shared task lifecycle and host rewrite capabilities. Its public workflow is available for all four hosts. DeepSeek Harness provides native `/tokenpilot-clean` commands; it is not registered in the shared CLI.
+Cleaner reuses shared task lifecycle and host rewrite capabilities. Its public workflow is available on OpenClaw, Codex, Claude Code, and DeepSeek Harness; it is not integrated in the pi and OpenCode adapters yet. DeepSeek Harness provides native `/tokenpilot-clean` commands; it is not registered in the shared CLI.
 
 ## Native Host Plugins
 
-TokenPilot integrates with OpenClaw, Codex, Claude Code, and [DeepSeek Harness](/hosts/deepseek-harness). OpenClaw uses a native plugin slot; Harness uses a native Cordis plugin for optional context eviction and session status. Codex uses a local proxy and hooks, while Claude Code uses a local gateway and MCP.
+TokenPilot integrates with OpenClaw, Codex, Claude Code, [DeepSeek Harness](/hosts/deepseek-harness), pi, and OpenCode. OpenClaw uses a native plugin slot; Harness uses a native Cordis plugin for optional context eviction and session status. Codex uses a local proxy and hooks, while Claude Code uses a local gateway and MCP. pi and OpenCode run in-process, with no proxy or gateway.
 
 These integration mechanisms do not make every product or feature available on every host. See [Host Compatibility](/hosts/compatibility) for the supported combinations.
 

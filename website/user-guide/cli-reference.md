@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `lightrsi` CLI provides shared commands for OpenClaw, Codex, and Claude Code. DeepSeek Harness uses its native plugin interface and [`/tokenpilot-status`](/hosts/deepseek-harness#verify-in-a-session).
+The `lightrsi` CLI provides shared commands for OpenClaw, Codex, Claude Code, pi, and OpenCode. DeepSeek Harness uses its native plugin interface and [`/tokenpilot-status`](/hosts/deepseek-harness#verify-in-a-session).
 
 ## Global Commands
 
@@ -93,6 +93,42 @@ lightrsi claude-code reduction status
 lightrsi claude-code help
 ```
 
+## pi Commands
+
+```bash
+lightrsi pi status
+lightrsi pi report
+lightrsi pi doctor
+lightrsi pi visual
+lightrsi pi session <id> report
+lightrsi pi mode <conservative|normal>
+lightrsi pi stabilizer <on|off>
+lightrsi pi stabilizer target <developer|user>
+lightrsi pi reduction <on|off>
+lightrsi pi reduction mode <light|balanced|aggressive>
+lightrsi pi reduction pass <name> <on|off>
+lightrsi pi eviction <status|on|off>
+lightrsi pi eviction set minBlockChars <number>
+lightrsi pi help
+```
+
+## OpenCode Commands
+
+```bash
+lightrsi opencode status
+lightrsi opencode report
+lightrsi opencode doctor
+lightrsi opencode visual
+lightrsi opencode session <id> report
+lightrsi opencode mode <conservative|normal>
+lightrsi opencode stabilizer <on|off>
+lightrsi opencode reduction <on|off>
+lightrsi opencode reduction pass <name> <on|off>
+lightrsi opencode eviction <status|on|off>
+lightrsi opencode eviction set minBlockChars <number>
+lightrsi opencode help
+```
+
 ## DeepSeek Harness Commands
 
 Inside a DeepSeek Harness session:
@@ -103,11 +139,11 @@ Inside a DeepSeek Harness session:
 
 This read-only command reports estimator activity, eligible eviction work, scheduled or applied changes, and deferrals without creating a model turn. The adapter is registered by Cordis as `tokenpilot-dsh`; it does not use the shared `lightrsi` CLI.
 
-See [DeepSeek Harness](/hosts/deepseek-harness) for plugin installation and configuration. The global CLI commands above apply to OpenClaw, Codex, and Claude Code.
+See [DeepSeek Harness](/hosts/deepseek-harness) for plugin installation and configuration. The global CLI commands above apply to OpenClaw, Codex, Claude Code, pi, and OpenCode.
 
 ## Context Cleaner Commands
 
-Cleaner is available through the shared CLI for `openclaw`, `codex`, and `claude-code`:
+Cleaner is available through the shared CLI for `openclaw`, `codex`, and `claude-code`; it is not integrated in the pi and OpenCode adapters yet:
 
 ```bash
 lightrsi <host> clean

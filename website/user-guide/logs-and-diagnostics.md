@@ -4,7 +4,7 @@ How to find logs and use diagnostic tools.
 
 ## Quick Diagnostic Commands
 
-For OpenClaw, Codex, and Claude Code, start with the shared CLI:
+For OpenClaw, Codex, Claude Code, pi, and OpenCode, start with the shared CLI:
 
 ```bash
 lightrsi doctor    # Integration health check

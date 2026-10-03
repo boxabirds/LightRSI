@@ -7,6 +7,8 @@ No formal configuration schema specification exists. TokenPilot uses host-specif
 | OpenClaw | `~/.openclaw/openclaw.json` (plugin entry within `plugins.entries.tokenpilot.config`) |
 | Codex CLI | `~/.codex/tokenpilot.json` |
 | Claude Code | `~/.claude/tokenpilot.json` |
+| pi | `~/.pi/agent/tokenpilot.json` (`TOKENPILOT_PI_CONFIG` overrides) |
+| OpenCode | `~/.config/opencode/tokenpilot.json` (`TOKENPILOT_OPENCODE_CONFIG` overrides) |
 | DeepSeek Harness | `tokenpilot-dsh` in the selected Harness profile's `cordis.patch.yml`; [fields and defaults](/hosts/deepseek-harness#configuration-reference) |
 
 For TokenPilot-specific config keys and defaults, see the [TokenPilot Configuration Reference](/plugin-catalog/tokenpilot/configuration).

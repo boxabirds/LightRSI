@@ -10,8 +10,10 @@ TokenPilot provides built-in reporting and a visual inspector so you can see exa
 | Codex | `lightrsi codex report` | `lightrsi codex visual` |
 | Claude Code | `lightrsi claude-code report` | `lightrsi claude-code visual` |
 | DeepSeek Harness | `/tokenpilot-status` inside a Harness session | Shared Visual interface does not apply |
+| pi | `lightrsi pi report` | `lightrsi pi visual` |
+| OpenCode | `lightrsi opencode report` | `lightrsi opencode visual` |
 
-DeepSeek Harness reports estimator activity, scheduling, application, and deferrals through its native read-only status command. See [status fields](/hosts/deepseek-harness#verify-in-a-session). The shared report metrics and Visual walkthrough below apply to OpenClaw, Codex, and Claude Code.
+DeepSeek Harness reports estimator activity, scheduling, application, and deferrals through its native read-only status command. See [status fields](/hosts/deepseek-harness#verify-in-a-session). The shared report metrics and Visual walkthrough below apply to OpenClaw, Codex, Claude Code, pi, and OpenCode.
 
 ## The Report Command
 
@@ -25,6 +27,8 @@ lightrsi report
 lightrsi openclaw report
 lightrsi codex report
 lightrsi claude-code report
+lightrsi pi report
+lightrsi opencode report
 
 # Inside OpenClaw
 /lightrsi report

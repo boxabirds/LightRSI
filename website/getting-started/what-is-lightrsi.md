@@ -1,6 +1,6 @@
 # What is LightRSI
 
-LightRSI is a **modular runtime for recursive improvement in long-running LLM agents**. It provides the shared lifecycle, state, safety, observability, and host integration needed to build an improvement capability once and run it across OpenClaw, Codex, Claude Code, and future hosts. The current implementation focuses on context and agentic memory.
+LightRSI is a **modular runtime for recursive improvement in long-running LLM agents**. It provides the shared lifecycle, state, safety, observability, and host integration needed to build an improvement capability once and run it across OpenClaw, Codex, Claude Code, DeepSeek Harness, pi, OpenCode, and future hosts. The current implementation focuses on context and agentic memory.
 
 ## Platform, Preset, and Product {#lightrsi-vs-tokenpilot}
 
@@ -12,7 +12,7 @@ LightRSI, TokenPilot, and Context Cleaner describe different parts of the system
 | TokenPilot | Context-management preset | Composes stable-prefix, reduction, and eviction capabilities |
 | Context Cleaner | User-facing product | Lets users inspect tasks, approve a selection, and check the cleanup result |
 
-Host adapters connect these capabilities to OpenClaw, Codex, Claude Code, and DeepSeek Harness. Some integrations are installed as native host plugins; supported features and product entrypoints vary by host.
+Host adapters connect these capabilities to OpenClaw, Codex, Claude Code, DeepSeek Harness, pi, and OpenCode. Some integrations are installed as native host plugins; supported features and product entrypoints vary by host.
 
 ## Context Cleaner
 

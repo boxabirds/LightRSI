@@ -20,7 +20,7 @@ features:
   - title: Cache-Efficient Context
     details: Stable-prefix rewriting, context reduction, and lifecycle-aware eviction keep long-running sessions manageable.
   - title: Multi-Host Support
-    details: TokenPilot runs on OpenClaw, Codex CLI, and Claude Code through reusable host adapters; LightRSI also exposes a DeepSeek Harness compatibility adapter.
+    details: TokenPilot runs on OpenClaw, Codex CLI, Claude Code, OpenCode, pi, and DeepSeek Harness through reusable host adapters, in-process or behind a local proxy.
   - title: Built-in Observability
     details: Session reports, visual inspector dashboard, and doctor diagnostics help you understand exactly what's happening.
   - title: Modular Plugin Architecture

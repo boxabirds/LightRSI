@@ -16,6 +16,8 @@ pnpm lightrsi:install
 npm --prefix components/adapters/openclaw run build
 npm --prefix components/adapters/codex run build
 npm --prefix components/adapters/claude-code run build
+npm --prefix components/adapters/pi run build
+npm --prefix components/adapters/opencode run build
 ```
 
 ## Typecheck

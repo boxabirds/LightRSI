@@ -8,6 +8,8 @@ TokenPilot settings control how aggressively it manages context. Configuration d
 | Codex | Shared CLI settings; see [supported features](/hosts/codex) |
 | Claude Code | Shared CLI settings; see [supported features](/hosts/claude-code) |
 | DeepSeek Harness | Explicit profile configuration: master switch, persistent state, estimator, and eviction settings |
+| pi | Shared CLI settings; see [supported features](/hosts/pi) |
+| OpenCode | Shared CLI settings; see [supported features](/hosts/opencode) |
 
 ## DeepSeek Harness Configuration
 

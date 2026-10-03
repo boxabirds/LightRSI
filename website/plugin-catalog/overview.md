@@ -6,7 +6,7 @@ This catalog introduces LightRSI's context-management preset and user-facing cle
 
 | Preset | Capability | Status | Hosts |
 | :-- | :-- | :-- | :-- |
-| [TokenPilot](./tokenpilot/overview) | Cache-aware context management | <span class="badge-stable">Stable</span> | OpenClaw, Codex, Claude Code, DeepSeek Harness |
+| [TokenPilot](./tokenpilot/overview) | Cache-aware context management | <span class="badge-stable">Stable</span> | OpenClaw, Codex, Claude Code, DeepSeek Harness, pi, OpenCode |
 
 [DeepSeek Harness](/hosts/deepseek-harness) provides a native Cordis integration with opt-in context eviction and session status. Capabilities vary by host; see [Host Compatibility](/hosts/compatibility).
 
@@ -14,11 +14,11 @@ This catalog introduces LightRSI's context-management preset and user-facing cle
 
 [Context Cleaner](/user-guide/context-cleaner) provides an inspect, select, approve, and verify workflow for task-level cleanup. It reuses shared task and host rewrite capabilities. It is a user-facing product, while TokenPilot is a preset of context-management policies.
 
-Public Cleaner entrypoints are available for all four hosts. DeepSeek Harness provides native `/tokenpilot-clean` commands with explicit task selection; its external CLI and Host-terminal arrow-key selector are not yet available. See [Cleaner host support](/user-guide/context-cleaner#supported-hosts).
+Public Cleaner entrypoints are available for OpenClaw, Codex, Claude Code, and DeepSeek Harness. DeepSeek Harness provides native `/tokenpilot-clean` commands with explicit task selection; its external CLI and Host-terminal arrow-key selector are not yet available. See [Cleaner host support](/user-guide/context-cleaner#supported-hosts).
 
 ## Host Plugins and Adapters
 
-OpenClaw's native plugin and DeepSeek Harness's Cordis plugin are host integration mechanisms. Codex uses a local proxy and hooks; Claude Code uses a local gateway and MCP. Installing an adapter does not imply that every preset capability or product entrypoint is available on that host.
+OpenClaw's native plugin and DeepSeek Harness's Cordis plugin are host integration mechanisms. Codex uses a local proxy and hooks; Claude Code uses a local gateway and MCP. pi uses an in-process extension, and OpenCode uses an in-process v1 plugin plus the shared recovery MCP server. Installing an adapter does not imply that every preset capability or product entrypoint is available on that host.
 
 ## Status Badges {#plugin-statuses}
 

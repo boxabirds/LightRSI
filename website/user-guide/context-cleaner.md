@@ -32,6 +32,8 @@ Cleaner reuses task lifecycle and host rewrite capabilities. It is not a command
 | Claude Code | Installed `lightrsi-clean` analysis skill or `lightrsi claude-code clean` | Selection is scheduled for the next eligible host request |
 | DeepSeek Harness | Native `/tokenpilot-clean` with explicit task IDs | Selection is scheduled for the next ordinary agent request |
 
+Context Cleaner is available on OpenClaw, Codex, Claude Code, and DeepSeek Harness. It is not integrated in the pi and OpenCode adapters yet.
+
 For OpenClaw, Codex, and Claude Code, the shared terminal CLI supports analysis, explicit selection, status, and cancellation. The host-specific interfaces differ as described below.
 
 ## Install

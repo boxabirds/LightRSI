@@ -10,8 +10,10 @@ Plugins are the core unit of functionality in LightRSI. This page covers how to 
 | Codex | `lightrsi codex status` |
 | Claude Code | `lightrsi claude-code status` |
 | DeepSeek Harness | `/tokenpilot-status` inside Harness; configure `tokenpilot-dsh` through its profile |
+| pi | `lightrsi pi status` |
+| OpenCode | `lightrsi opencode status` |
 
-The default-host and session-pinning commands below apply to the three shared CLI hosts. For DeepSeek Harness, see [profile configuration](/hosts/deepseek-harness#configure-and-enable).
+The default-host and session-pinning commands below apply to the five shared CLI hosts. For DeepSeek Harness, see [profile configuration](/hosts/deepseek-harness#configure-and-enable).
 
 ## List Installed Plugins
 
@@ -27,6 +29,8 @@ Shows all installed plugins and their state.
 lightrsi use openclaw
 lightrsi use codex
 lightrsi use claude-code
+lightrsi use pi
+lightrsi use opencode
 ```
 
 This sets the default host for hostless commands like `lightrsi report`.

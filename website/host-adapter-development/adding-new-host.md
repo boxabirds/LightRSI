@@ -40,6 +40,8 @@ From the [adapters/README.md](https://github.com/zjunlp/LightRSI/blob/main/compo
 - [Codex Adapter](https://github.com/zjunlp/LightRSI/blob/main/components/adapters/codex/README.md)
 - [Claude Code Adapter](https://github.com/zjunlp/LightRSI/blob/main/components/adapters/claude-code/README.md)
 - [DeepSeek Harness Adapter](https://github.com/zjunlp/LightRSI/tree/main/components/adapters/deepseek-harness)
+- [pi Adapter](https://github.com/zjunlp/LightRSI/blob/main/components/adapters/pi/README.md)
+- [OpenCode Adapter](https://github.com/zjunlp/LightRSI/blob/main/components/adapters/opencode/README.md)
 
 ## Related Pages
 

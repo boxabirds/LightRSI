@@ -9,7 +9,7 @@ This page covers the LightRSI platform installation — the shared runtime that 
 | **Node.js** | ≥ 18 | v20+ recommended |
 | **pnpm** | ≥ 9 | v10.32+ used in development |
 | **OS** | macOS, Linux, Windows (WSL) | Windows native may work but is less tested |
-| **Target Host** | OpenClaw / Codex / Claude Code / DeepSeek Harness | See [Host Compatibility](/hosts/compatibility) for capabilities |
+| **Target Host** | OpenClaw / Codex / Claude Code / DeepSeek Harness / pi / OpenCode | See [Host Compatibility](/hosts/compatibility) for capabilities |
 
 Building LightRSI does not require API credentials. Host operation and optional model-based features have their own requirements. DeepSeek Harness requires a newer Node.js version and estimator credentials for eviction; follow its [dedicated setup guide](/hosts/deepseek-harness).
 
@@ -39,19 +39,14 @@ This builds the shared foundation and feature packages that plugins and adapters
 
 ## Step 4: Build and Install the CLI
 
-This step is for OpenClaw, Codex, and Claude Code. For DeepSeek Harness, continue with [native plugin installation](/hosts/deepseek-harness#install) and verify inside Harness using `/tokenpilot-status`; the shared CLI is not its installation or verification entrypoint.
+This step is for OpenClaw, Codex, Claude Code, pi, and OpenCode. For DeepSeek Harness, continue with [native plugin installation](/hosts/deepseek-harness#install) and verify inside Harness using `/tokenpilot-status`; the shared CLI is not its installation or verification entrypoint.
 
 ```bash
 pnpm lightrsi:build
 pnpm lightrsi:install
 ```
 
-The first command builds the shared `lightrsi` CLI. The second installs it to
-`~/.local/bin/lightrsi` on Linux/macOS. For the complete Codex or Claude Code
-Cleaner flow, use `pnpm cleaner:install:codex` or
-`pnpm cleaner:install:claude-code`; those commands also build the recovery MCP,
-selected adapter, and explicit-only Cleaner analysis, status, apply, and cancel
-command skills. On Windows they create a `lightrsi.cmd` launcher.
+The first command builds the shared `lightrsi` CLI. The second installs it to `~/.local/bin/lightrsi` on Linux/macOS. For the complete Codex or Claude Code Cleaner flow, use `pnpm cleaner:install:codex` or `pnpm cleaner:install:claude-code`; those commands also build the recovery MCP, selected adapter, and explicit-only Cleaner analysis, status, apply, and cancel command skills. On Windows they create a `lightrsi.cmd` launcher.
 
 ::: warning PATH notice Make sure `~/.local/bin` is on your `PATH`. Add this to your shell config if needed:
 
@@ -80,7 +75,7 @@ This shows your current default host, pinned session, and config target.
 
 | Component | Location | Purpose |
 | :-- | :-- | :-- |
-| `lightrsi` CLI | `~/.local/bin/lightrsi` | Standalone CLI for OpenClaw, Codex, and Claude Code |
+| `lightrsi` CLI | `~/.local/bin/lightrsi` | Standalone CLI for OpenClaw, Codex, Claude Code, pi, and OpenCode |
 | Shared packages | `node_modules/` (workspace) | Runtime engine, types, contracts |
 | Host adapter code | `components/adapters/` | Per-host integration code |
 

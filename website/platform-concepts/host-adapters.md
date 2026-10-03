@@ -1,6 +1,6 @@
 # Host Adapters
 
-A host adapter is the **integration layer** between an agent host and the LightRSI core runtime. It translates host-specific events, APIs, and configuration into the standardized format that plugins expect. OpenClaw, Codex, and Claude Code expose shared CLI and Visual interfaces. [DeepSeek Harness](/hosts/deepseek-harness) uses a native Cordis plugin for optional context eviction and session status.
+A host adapter is the **integration layer** between an agent host and the LightRSI core runtime. It translates host-specific events, APIs, and configuration into the standardized format that plugins expect. OpenClaw, Codex, Claude Code, pi, and OpenCode expose shared CLI and Visual interfaces. [DeepSeek Harness](/hosts/deepseek-harness) uses a native Cordis plugin for optional context eviction and session status.
 
 ## Why Adapters Exist
 
@@ -48,6 +48,8 @@ The adapter abstracts these differences so plugins only deal with one consistent
 | Codex | `components/adapters/codex/` | Local proxy + hooks |
 | Claude Code | `components/adapters/claude-code/` | Local gateway + MCP |
 | [DeepSeek Harness](/hosts/deepseek-harness) | `components/adapters/deepseek-harness/` | Cordis plugin + optional eviction + durable status projection |
+| pi | `components/adapters/pi/` | In-process extension + native recovery tool |
+| OpenCode | `components/adapters/opencode/` | In-process v1 plugin + recovery MCP |
 
 ## Next
 

@@ -2,7 +2,7 @@
 
 Context eviction provides **lifecycle-aware pruning** of old context in longer shared-session workflows.
 
-OpenClaw exposes the mode and eviction controls below. DeepSeek Harness provides opt-in eviction through its native Cordis plugin. See [Host Compatibility](/hosts/compatibility) for the other adapters, including Codex's separate opt-in response-chain rebase.
+OpenClaw exposes the mode and eviction controls below. DeepSeek Harness provides opt-in eviction through its native Cordis plugin, and pi and OpenCode provide opt-in eviction (off by default) through their in-process adapters. See [Host Compatibility](/hosts/compatibility) for the remaining adapters, including Codex's separate opt-in response-chain rebase.
 
 ## OpenClaw Mode Thresholds
 

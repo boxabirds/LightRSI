@@ -76,6 +76,50 @@ export TOKENPILOT_CLAUDE_CODE_CONFIG="/path/to/tokenpilot.json"
 corepack pnpm cleaner:install:claude-code
 ```
 
+### pi
+
+```bash
+npm --prefix components/adapters/pi run build
+npm --prefix components/adapters/pi run install:pi
+```
+
+This command:
+- Writes a marker-tagged loader at `~/.pi/agent/extensions/tokenpilot/index.js`
+- Writes `~/.pi/agent/tokenpilot.json` in `normal` mode if it does not exist
+- Registers a native `memory_fault_recover` tool (pi has no MCP)
+- Installs the shared `lightrsi` CLI
+- Modifies no pi-owned config file and runs no proxy or gateway
+
+**Custom paths:**
+
+```bash
+export PI_CODING_AGENT_DIR="/path/to/pi-agent-dir"
+export TOKENPILOT_PI_CONFIG="/path/to/tokenpilot.json"
+npm --prefix components/adapters/pi run install:pi
+```
+
+### OpenCode
+
+```bash
+npm --prefix components/adapters/opencode run build
+npm --prefix components/adapters/opencode run install:opencode
+```
+
+This command:
+- Writes a marker-tagged loader at `~/.config/opencode/plugins/tokenpilot.js`
+- Adds the shared recovery MCP server to `opencode.json`
+- Writes `~/.config/opencode/tokenpilot.json` in `normal` mode if it does not exist
+- Installs the shared `lightrsi` CLI
+- Runs no proxy or gateway
+
+**Custom paths:**
+
+```bash
+export TOKENPILOT_OPENCODE_CONFIG_DIR="/path/to/opencode-config-dir"
+export TOKENPILOT_OPENCODE_CONFIG="/path/to/tokenpilot.json"
+npm --prefix components/adapters/opencode run install:opencode
+```
+
 ### DeepSeek Harness
 
 Build and package the adapter from the LightRSI repository:
@@ -95,7 +139,7 @@ Replace the archive path and profile as needed. The plugin is registered as `tok
 
 ## Verify Installation
 
-For OpenClaw, Codex, and Claude Code:
+For OpenClaw, Codex, Claude Code, pi, and OpenCode:
 
 ```bash
 lightrsi doctor
@@ -110,9 +154,11 @@ lightrsi codex doctor
 lightrsi claude-code doctor
 lightrsi codex clean --help
 lightrsi claude-code clean --help
+lightrsi pi doctor
+lightrsi opencode doctor
 ```
 
-Look for: `plugin entry enabled`, `config enabled`, `proxy healthy: yes`.
+Look for: `plugin entry enabled`, `config enabled`, `proxy healthy: yes`. Only OpenClaw, Codex, and Claude Code run a local proxy or gateway, so `proxy healthy` does not apply to pi or OpenCode.
 
 For DeepSeek Harness, open a session with the configured profile and run:
 
@@ -132,8 +178,10 @@ Installation and configuration locations differ by host:
 | Codex | `~/.codex/tokenpilot.json`, `~/.codex/hooks.json` |
 | Claude Code | `~/.claude/settings.json`, `~/.claude/tokenpilot.json`, `~/.claude/.claude.json` |
 | DeepSeek Harness | `$DSH_HOME/profiles/<profile>/cordis.patch.yml` (default home: `~/.dsh`); [profile setup](/hosts/deepseek-harness#configure-and-enable) |
+| pi | `~/.pi/agent/tokenpilot.json` |
+| OpenCode | `~/.config/opencode/tokenpilot.json`, `~/.config/opencode/opencode.json` |
 
-The OpenClaw, Codex, and Claude Code installers preserve the host configuration files they back up as `.tokenpilot.bak`. DeepSeek Harness uses its own profile plugin installer; do not assume the same backup convention.
+The OpenClaw, Codex, and Claude Code installers preserve the host configuration files they back up as `.tokenpilot.bak`. The pi installer modifies no pi-owned file. The OpenCode installer backs up `opencode.json` before adding only the recovery MCP entry, and leaves a non-plain-JSON `opencode.json` or an `opencode.jsonc` untouched so your comments survive. DeepSeek Harness uses its own profile plugin installer; do not assume the same backup convention.
 
 ## Next
 

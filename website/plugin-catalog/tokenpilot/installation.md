@@ -2,7 +2,7 @@
 
 TokenPilot is installed as part of [installing your first plugin](/getting-started/install-first-plugin). This page covers TokenPilot-specific details.
 
-Choose your host below. DeepSeek Harness uses the Harness profile plugin installer; OpenClaw, Codex, and Claude Code use their host adapter installers.
+Choose your host below. DeepSeek Harness uses the Harness profile plugin installer; OpenClaw, Codex, Claude Code, pi, and OpenCode use their host adapter installers.
 
 ## Prerequisites
 
@@ -31,6 +31,16 @@ corepack pnpm --filter @lightrsi/deepseek-harness-adapter pack --pack-destinatio
 # Then, from your DeepSeek Harness checkout
 node --import tsx/esm apps/cli/src/bin.ts plugin --profile web add /absolute/path/to/lightrsi-deepseek-harness-adapter-<version>.tgz
 ```
+
+```bash [pi]
+npm --prefix components/adapters/pi run build
+npm --prefix components/adapters/pi run install:pi
+```
+
+```bash [OpenCode]
+npm --prefix components/adapters/opencode run build
+npm --prefix components/adapters/opencode run install:opencode
+```
 :::
 
 ## What the Installer Does
@@ -45,6 +55,8 @@ For OpenClaw, Codex, and Claude Code, the host installation flow:
 6. **Creates backups** of modified files as `.tokenpilot.bak`
 
 For OpenClaw, the release installer builds one archive containing both the native plugin and the bundled `lightrsi` CLI. It installs the CLI in `~/.local/bin` by default (or `LIGHTRSI_BIN_DIR` when set) and provides the launchers required by the supported Windows, WSL, and Git Bash paths.
+
+For pi and OpenCode, the adapter installers build the adapter, install a marker-tagged in-process loader, write `tokenpilot.json` in `normal` mode, and register the recovery surface: a native `memory_fault_recover` tool for pi (pi has no MCP), and the shared recovery MCP server in `opencode.json` for OpenCode. Neither installs a proxy or gateway, and neither creates `.tokenpilot.bak` backups.
 
 For DeepSeek Harness, the package registers `tokenpilot-dsh` in the selected profile. Replace the archive path with your generated `.tgz`. The integration is disabled by default and requires a persistent `stateDir` plus estimator and eviction configuration before enabling it. Follow [Configure and Enable](/hosts/deepseek-harness#configure-and-enable); shared runtime modes and proxy installation do not apply.
 
@@ -68,9 +80,17 @@ lightrsi claude-code doctor
 ```text [DeepSeek Harness]
 /tokenpilot-status
 ```
+
+```bash [pi]
+lightrsi pi doctor
+```
+
+```bash [OpenCode]
+lightrsi opencode doctor
+```
 :::
 
-For the first three hosts, check:
+For OpenClaw, Codex, and Claude Code, check:
 - `plugin entry enabled`
 - `config enabled`
 - `mode normal`
@@ -79,6 +99,8 @@ For the first three hosts, check:
 
 For Codex and Claude Code, also check:
 - `proxy healthy: yes`
+
+For pi and OpenCode, `doctor` reports the loaded extension or plugin, the bundle, a writable state dir, and the declared features (`stabilizer, reduction, eviction`). OpenCode additionally probes its recovery MCP entry.
 
 In DeepSeek Harness, run `/tokenpilot-status` inside a session. It reports estimator, scheduling, application, and deferral state without creating a model turn. See [verification details](/hosts/deepseek-harness#verify-in-a-session).
 

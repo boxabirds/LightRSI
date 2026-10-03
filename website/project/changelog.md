@@ -1,5 +1,15 @@
 # Changelog
 
+## pi and OpenCode Support (2026-10-02)
+
+- TokenPilot support for **OpenCode** as an in-process v1 plugin plus the shared recovery MCP server, registered as `mcp.tokenpilot_memory_fault_recover`.
+- TokenPilot support for **pi** as an in-process extension with a native `memory_fault_recover` tool, because pi has no MCP.
+- Eviction is opt-in and off by default on both hosts, and neither adapter exposes `mode aggressive`.
+- pi installs an extension loader at `~/.pi/agent/extensions/tokenpilot/index.js` and does not modify pi's own config files.
+- OpenCode backs up `opencode.json` before adding that entry; a non-plain-JSON `opencode.json` or an `opencode.jsonc` is never rewritten, and the MCP snippet is printed instead.
+- Both hosts are driven through the shared `lightrsi pi ...` and `lightrsi opencode ...` CLI surface.
+- The host-neutral eviction core now lives in `@lightrsi/eviction`, so adapters share it instead of copying it (PRs #95, #96, #98).
+
 ## OpenClaw Cleaner Terminal Entry (2026-09-28)
 
 - `/lightrsi clean` now prints a same-terminal arrow-key launcher bound to the exact current OpenClaw session; it does not guess the most recently active session.

@@ -12,6 +12,8 @@ From [HOSTS.md](https://github.com/zjunlp/LightRSI/blob/main/components/adapters
 | Codex CLI | available | hooks + local Responses proxy + shared CLI | `npm --prefix components/adapters/codex run build` then `npm --prefix components/adapters/codex run install:codex` |
 | Claude Code | available | gateway routing + observability hooks + shared CLI | `npm --prefix components/adapters/claude-code run build` then `npm --prefix components/adapters/claude-code run install:claude-code` |
 | DeepSeek Harness | available | Native Cordis plugin + opt-in eviction + durable status projection | Build and pack the adapter, then add the `.tgz` through the Harness profile plugin installer; [installation commands](/hosts/deepseek-harness#install) |
+| pi | available | in-process extension + native recovery tool + shared CLI | `npm --prefix components/adapters/pi run build` then `npm --prefix components/adapters/pi run install:pi` |
+| OpenCode | available | in-process v1 plugin + recovery MCP + shared CLI | `npm --prefix components/adapters/opencode run build` then `npm --prefix components/adapters/opencode run install:opencode` |
 
 ## Adapter Responsibilities
 
