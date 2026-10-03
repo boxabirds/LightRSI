@@ -10,6 +10,7 @@ TokenPilot is now structured as a reusable LightRSI component with multiple host
 | `Codex CLI` | available | hooks + local Responses proxy + shared CLI | `npm --prefix components/adapters/codex run build` then `npm --prefix components/adapters/codex run install:codex` | [codex/README.md](./codex/README.md) |
 | `Claude Code` | available | gateway routing + observability hooks + shared CLI | `npm --prefix components/adapters/claude-code run build` then `npm --prefix components/adapters/claude-code run install:claude-code` | [claude-code/README.md](./claude-code/README.md) |
 | `DeepSeek Harness` | available | Cordis plugin + durable projection | `pnpm --filter @lightrsi/deepseek-harness-adapter compatibility:smoke -- --dsh-checkout=/absolute/path/to/deepseek-harness` | [GUA-06](../../docs/acceptance/GUA-06.md) |
+| `pi` | available | in-process extension + native recovery tool + shared CLI | `npm --prefix components/adapters/pi run build` then `npm --prefix components/adapters/pi run install:pi` | [pi/README.md](./pi/README.md) |
 | `OpenCode` | available | in-process v1 plugin + recovery MCP + shared CLI | `npm --prefix components/adapters/opencode run build` then `npm --prefix components/adapters/opencode run install:opencode` | [opencode/README.md](./opencode/README.md) |
 
 Each full TokenPilot host adapter binds the versioned preset explicitly. OpenClaw and Codex declare Stabilizer, Reduction, and Eviction; Claude Code currently declares Stabilizer and Reduction. DeepSeek Harness is a separate compatibility adapter with a narrower projection surface. The same adapter-owned product registrations are used by the shared CLI and browser Visual surface where applicable.
@@ -22,22 +23,22 @@ Legend:
 - `partial`: available, but intentionally narrower than the OpenClaw path
 - `no`: not supported in the current public adapter
 
-| Capability | OpenClaw | Codex CLI | Claude Code | OpenCode |
-| :-- | :--: | :--: | :--: | :--: |
-| Stable-prefix rewriting | yes | yes | yes | partial (`developer` target only) |
-| Before-call reduction | yes | yes | yes | yes |
-| Real MCP-backed `memory_fault_recover` | yes | yes | yes | yes |
-| Standalone `lightrsi <host> ...` CLI | yes | yes | yes | yes |
-| `status` / `doctor` / `report` | yes | yes | yes | yes |
-| `visual` | yes | yes | yes | yes |
-| `mode conservative` / `mode normal` | yes | yes | yes | yes |
-| `mode aggressive` | yes | no | no | no |
-| Estimator-driven lifecycle eviction runtime | yes | yes | yes | yes (durable request overlay) |
-| Lifecycle eviction controls | yes | no | no | `on` / `off` / `minBlockChars` |
-| In-host slash commands | yes | no | no | no |
-| Hook-based observability | partial | yes | yes | in-process |
-| Local proxy / gateway runtime | yes | yes | yes | not needed (in-process) |
-| Session-state / ux-effects persistence | yes | yes | yes | yes |
+| Capability | OpenClaw | Codex CLI | Claude Code | pi | OpenCode |
+| :-- | :--: | :--: | :--: | :--: | :--: |
+| Stable-prefix rewriting | yes | yes | yes | yes | partial (`developer` target only) |
+| Before-call reduction | yes | yes | yes | yes | yes |
+| Real MCP-backed `memory_fault_recover` | yes | yes | yes | native tool (pi has no MCP) | yes |
+| Standalone `lightrsi <host> ...` CLI | yes | yes | yes | yes | yes |
+| `status` / `doctor` / `report` | yes | yes | yes | yes | yes |
+| `visual` | yes | yes | yes | yes | yes |
+| `mode conservative` / `mode normal` | yes | yes | yes | yes | yes |
+| `mode aggressive` | yes | no | no | no | no |
+| Estimator-driven lifecycle eviction runtime | yes | yes | yes | yes (native `context_edit`) | yes (durable request overlay) |
+| Lifecycle eviction controls | yes | no | no | `on` / `off` / `minBlockChars` | `on` / `off` / `minBlockChars` |
+| In-host slash commands | yes | no | no | no | no |
+| Hook-based observability | partial | yes | yes | in-process | in-process |
+| Local proxy / gateway runtime | yes | yes | yes | not needed (in-process) | not needed (in-process) |
+| Session-state / ux-effects persistence | yes | yes | yes | yes | yes |
 
 ## Host Notes
 
@@ -70,6 +71,14 @@ Legend:
 - supports TokenPilot status projection and compatibility smoke verification
 - canonical surface eviction remains opt-in and is guarded by estimator, registry, safety, and revision checks
 
+### pi
+
+- in-process pi extension (verified on pi 0.87.1); no proxy, no host config mutation
+- stable prefix via structured prompt sections (`before_agent_start`), so pi keeps appending section deltas instead of replacing the prompt
+- request-time reduction in the `context` hook; recovery as a native tool with the MCP tool's exact schema
+- opt-in eviction through native `context_edit` entries at `turn_end`, before pi's own threshold compaction
+- design note: [docs/adapters/pi-design.md](../../docs/adapters/pi-design.md)
+
 ### OpenCode
 
 - in-process v1 plugin (verified on OpenCode 1.18.33) plus the shared recovery MCP server in `opencode.json`
@@ -81,7 +90,7 @@ Legend:
 ### Shared Visual Surface
 
 - `lightrsi visual` now provides a standalone browser visual entrypoint
-- the shared visual can switch between `openclaw`, `codex`, `claude-code`, and `opencode` hosts
+- the shared visual can switch between `openclaw`, `codex`, `claude-code`, `pi`, and `opencode` hosts
 - today, the browser visual is backed by snapshot data; OpenClaw still has the richest dataset, while Codex and Claude Code now route their `visual` commands into the shared browser surface
 
 ## Boundary

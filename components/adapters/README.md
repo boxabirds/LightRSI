@@ -23,6 +23,8 @@ Adapter inventory:
   - adapter for Claude Code
 - `deepseek-harness/`
   - Cordis adapter and compatibility smoke path for DeepSeek Harness
+- `pi/`
+  - in-process extension adapter for the pi coding agent
 - `opencode/`
   - in-process v1 plugin adapter for OpenCode
 - `shared/canonical/`
@@ -130,4 +132,5 @@ This keeps the first working version small and makes boundary mistakes easier to
 - [codex/README.md](./codex/README.md)
 - [claude-code/README.md](./claude-code/README.md)
 - [deepseek-harness/](./deepseek-harness/)
+- [pi/README.md](./pi/README.md)
 - [opencode/README.md](./opencode/README.md)

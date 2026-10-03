@@ -4,6 +4,7 @@ import { CLAUDE_CODE_PRODUCT_HOST_REGISTRATION } from "../../../../adapters/clau
 import { CODEX_PRODUCT_HOST_REGISTRATION } from "../../../../adapters/codex/src/product-registration.js";
 import { OPENCLAW_PRODUCT_HOST_REGISTRATION } from "../../../../adapters/openclaw/src/product-registration.js";
 import { OPENCODE_PRODUCT_HOST_REGISTRATION } from "../../../../adapters/opencode/src/product-registration.js";
+import { PI_PRODUCT_HOST_REGISTRATION } from "../../../../adapters/pi/src/product-registration.js";
 import { readCliHostPathOverrides, type CliHostPathOverrides } from "../context-store.js";
 
 export type CliHostRuntime = {
@@ -32,6 +33,7 @@ export const CLI_HOSTS = [
   OPENCLAW_PRODUCT_HOST_REGISTRATION,
   CODEX_PRODUCT_HOST_REGISTRATION,
   CLAUDE_CODE_PRODUCT_HOST_REGISTRATION,
+  PI_PRODUCT_HOST_REGISTRATION,
   OPENCODE_PRODUCT_HOST_REGISTRATION,
 ] as const;
 
@@ -56,9 +58,11 @@ async function productConfigPath(hostId: CliHostId): Promise<string | undefined>
     ? process.env.TOKENPILOT_CODEX_CONFIG?.trim()
     : hostId === "claude-code"
       ? process.env.TOKENPILOT_CLAUDE_CODE_CONFIG?.trim()
-      : hostId === "opencode"
-        ? process.env.TOKENPILOT_OPENCODE_CONFIG?.trim()
-        : undefined;
+      : hostId === "pi"
+        ? process.env.TOKENPILOT_PI_CONFIG?.trim()
+        : hostId === "opencode"
+          ? process.env.TOKENPILOT_OPENCODE_CONFIG?.trim()
+          : undefined;
   return environmentPath || (await readCliHostPathOverrides(hostId))?.tokenPilotConfigPath?.trim();
 }
 

@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-type SharedCliHostId = "codex" | "claude-code" | "opencode";
+type SharedCliHostId = "codex" | "claude-code" | "pi" | "opencode";
 
 type SharedCliHostPathOverrides = {
   tokenPilotConfigPath?: string;
