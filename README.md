@@ -62,7 +62,7 @@ LightRSI separates reusable improvement capabilities from shared runtime infrast
 <span id='news'/>
 
 ## 📢 News
-- **[2026-10-02]**: 🧩 TokenPilot now supports **[OpenCode](https://opencode.ai)** and **[pi](https://pi.dev)** as in-process integrations, with no proxy or gateway. The host-neutral eviction core moved into `@lightrsi/eviction`, so adapters reuse it instead of copying it.
+- **[2026-10-02]**: 🧩 TokenPilot now supports **[OpenCode](https://opencode.ai)** and **[pi](https://pi.dev)**.
 - **[2026-09-16]**: 🚀 **[Context Cleaner](./website/user-guide/context-cleaner.md)**, our first product, is now available, and TokenPilot now supports **[DeepSeek Harness](./website/hosts/deepseek-harness.md)**.
 - **[2026-08-21]**: 🎉🎉🎉 [**TokenPilot: Cache-Efficient Context Management for LLM Agents**](https://arxiv.org/abs/2606.17016) has been accepted by **EMNLP 2026**!
 - **[2026-06-28]**: 🧩 TokenPilot now supports **[Codex](./website/hosts/codex.md)** and **[Claude Code](./website/hosts/claude-code.md)**. Demo video: [YouTube](https://www.youtube.com/watch?v=LGpu7FqaXCI) · [Bilibili](https://www.bilibili.com/video/BV1DSM86fE8M/?spm_id_from=333.1007.0.0)
